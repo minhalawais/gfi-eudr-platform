@@ -1,0 +1,76 @@
+/* === FOS EUDR DESIGN TOKENS === */
+:root {
+  /* Primary Palette */
+  --fos-primary: #0E5A46;
+  --fos-accent: #F4C400;
+  --fos-accent-hover: #D9AB00;
+
+  /* Neutral Palette */
+  --fos-bg-page: #F6F9F7;
+  --fos-surface: #FFFFFF;
+  --fos-text-primary: #14201B;
+  --fos-text-secondary: #41514A;
+  --fos-text-muted: #6E7E76;
+  --fos-text-inverse: #FFFFFF;
+  --fos-border: #D8E2DD;
+  --fos-border-strong: #B7C7C0;
+
+  /* Semantic / Risk Colors */
+  --risk-negligible: #1F9D55;
+  --risk-low: #1F9D55;
+  --risk-medium: #D9822B;
+  --risk-high: #D64545;
+  --risk-critical: #8B5CF6;
+  --state-info: #2F80ED;
+
+  /* Commodity Colors */
+  --cocoa-color: #7C5C3E;
+  --palm-color: #D97706;
+  --rubber-color: #059669;
+  --soya-color: #65A30D;
+  --wood-color: #92400E;
+
+  /* Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(20, 32, 27, 0.08);
+  --shadow-md: 0 4px 16px rgba(14, 90, 70, 0.1);
+  --shadow-lg: 0 8px 32px rgba(14, 90, 70, 0.14);
+  --shadow-glow: 0 0 24px rgba(244, 196, 0, 0.3);
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 400ms ease;
+}
+

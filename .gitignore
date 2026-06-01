@@ -1,0 +1,33 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Infrastructure runtime data
+tmp/
+data/
+infra/runtime/
+
+# Docker / compose overrides
+docker-compose.override.yml
