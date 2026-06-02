@@ -486,6 +486,7 @@
   padding: 3px 10px;
   border-radius: var(--radius-full);
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .traceability-studio__rail-list {
@@ -660,6 +661,7 @@
   letter-spacing: 0.12em;
   color: var(--fos-text-secondary);
   font-weight: 700;
+  align-content: space-around;
 }
 
 .traceability-overview__stats {

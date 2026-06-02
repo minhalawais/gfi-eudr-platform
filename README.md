@@ -31,3 +31,7 @@ src/types/             Frontend-safe types and view models
 - Use server components unless client interactivity is required.
 - Keep auth and permission decisions enforced server-side.
 - Use shared status and evidence-view patterns instead of one-off UI logic.
+
+## Environment Variables
+
+- `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN`: required for supplier-portal head-office map picker (intermediary form).

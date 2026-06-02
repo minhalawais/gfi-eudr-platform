@@ -4,6 +4,9 @@ import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
+import { AlertCircle, Check, FileText, HelpCircle, Info, MapPinned, Search } from "lucide-react";
+import Map, { Marker, NavigationControl } from "react-map-gl/mapbox";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { AppTopbar, DevelopedByFooter } from "@/components/ui";
 import {
   FarmerDeclarationSubmission,
@@ -36,6 +39,37 @@ interface PlotRow {
   fileName: string;
 }
 
+type FacilityType = "Production" | "Processing" | "Storage" | "";
+type OperationalStatus = "Own" | "Lease" | "Contract" | "";
+type ExistsYesNo = "YES" | "NO" | "";
+
+interface Section3FacilityRow {
+  siteNo: number;
+  siteName: string;
+  fullAddress: string;
+  pinLocation: string;
+  facilityType: FacilityType;
+  operationalStatus: OperationalStatus;
+}
+
+interface Section3LandDocRow {
+  id: string;
+  documentType: string;
+  existsYesNo: ExistsYesNo;
+  issuingAuthorityName: string;
+  attached: boolean;
+  uploadedFiles: string[];
+}
+
+interface Section3LegalActions {
+  hasDisputes: "no" | "yes";
+  disputeExplanation: string;
+  judicialDecisions: boolean;
+  administrativeRulings: boolean;
+  settlementDocsAttached: boolean;
+  uploadedFiles: string[];
+}
+
 interface IntermediaryFormState {
   roles: string[];
   suppliedCommodities: string[];
@@ -49,10 +83,11 @@ interface IntermediaryFormState {
   phone: string;
   headOfficeLat: string;
   headOfficeLng: string;
+  headOfficeAddress: string;
   operationsScope: string;
-  facilities: string;
-  landDocuments: string;
-  disputes: string;
+  section3Facilities: Section3FacilityRow[];
+  section3LandDocs: Section3LandDocRow[];
+  section3LegalActions: Section3LegalActions;
   licenses: string;
   certifications: string;
   purchasedMaterials: string;
@@ -66,6 +101,16 @@ interface IntermediaryFormState {
   firstPointOfSale: string;
   policies: Record<string, boolean>;
   thirdPartyVerification: string;
+  documentUploads: {
+    landRights: string[];
+    disputes: string[];
+    licenses: string[];
+    certifications: string[];
+    tradeProof: string[];
+    processing: string[];
+    policies: string[];
+    thirdPartyVerification: string[];
+  };
   signatureName: string;
   designation: string;
   declarationDate: string;
@@ -131,6 +176,189 @@ const farmerSections = [
   "Section 11 - Legal disputes and sanctions",
   "Section 12 - Formal declaration",
 ];
+
+type FieldRequirement = "required" | "optional" | "conditional";
+type InstructionTone = "important" | "howTo" | "ifApplicable" | "attachment";
+
+interface IntermediaryFieldMeta {
+  requirement: FieldRequirement;
+  instruction?: string;
+  condition?: string;
+}
+
+interface GeocodeFeature {
+  id: string;
+  place_name: string;
+  center: [number, number];
+}
+
+const INTERMEDIARY_SECTION_INSTRUCTIONS: Record<number, { tone: InstructionTone; title: string; items: string[] }> = {
+  0: {
+    tone: "important",
+    title: "Important instructions",
+    items: [
+      "This declaration is for intermediary suppliers only, not primary farmers/producers.",
+      "Select all applicable roles and all EUDR commodity groups supplied to the buyer.",
+      "Use accurate values that can be supported by evidence during audit.",
+    ],
+  },
+  1: {
+    tone: "howTo",
+    title: "How to complete supplier profile",
+    items: [
+      "Enter legal registration details exactly as in official records.",
+      "Head office coordinates should use decimal format (example: 31.5204, 74.3587).",
+      "Tax number is optional if not issued in your jurisdiction.",
+    ],
+  },
+  2: {
+    tone: "ifApplicable",
+    title: "If applicable",
+    items: [
+      "Complete this section if you own, lease, or operate production/processing/storage facilities.",
+      "Include legal-use-right references and disclose ongoing disputes or enforcement actions.",
+    ],
+  },
+  3: {
+    tone: "attachment",
+    title: "Attachment guidance",
+    items: [
+      "Confirm licenses/permits required for legal operation in your country.",
+      "Where certification is claimed, include scheme, CoC model, validity period, and supporting files.",
+    ],
+  },
+  4: {
+    tone: "important",
+    title: "Traceability declaration guidance",
+    items: [
+      "List all upstream entities contributing to declared materials.",
+      "Attach trade evidence and confirm traceability controls used to prevent mixing.",
+      "Volume contribution should reflect declared material composition.",
+    ],
+  },
+  5: {
+    tone: "howTo",
+    title: "Processing operations guidance",
+    items: [
+      "Describe actual transformation activity performed on EUDR-relevant material.",
+      "Document input-to-output flow and first point of sale information.",
+    ],
+  },
+  6: {
+    tone: "attachment",
+    title: "Policy evidence guidance",
+    items: [
+      "Mark policy existence accurately and attach references where available.",
+      "Include due-diligence and anti-deforestation policy controls where applicable.",
+    ],
+  },
+  7: {
+    tone: "attachment",
+    title: "Certification and verification guidance",
+    items: [
+      "Declare third-party certification or audit scope only where applicable.",
+      "Include validity period and attachment references when claiming certification.",
+    ],
+  },
+  8: {
+    tone: "important",
+    title: "Declaration responsibility",
+    items: [
+      "Submit only after confirming all mandatory entries and evidence references.",
+      "Authorized signatory confirms information is true, complete, and accurate.",
+    ],
+  },
+};
+
+const INTERMEDIARY_FIELD_META: Record<number, Record<string, IntermediaryFieldMeta>> = {
+  0: {
+    roles: { requirement: "required", instruction: "Tick all applicable roles in your current supply-chain function." },
+    suppliedCommodities: { requirement: "required", instruction: "Select all EUDR commodity groups you supply to the buyer (Annex I aligned)." },
+  },
+  1: {
+    legalName: { requirement: "required", instruction: "Use your legally registered company name." },
+    country: { requirement: "required", instruction: "Country where the company is legally registered." },
+    registeredAddress: { requirement: "required", instruction: "Registered legal address as per official registration." },
+    registrationNumber: { requirement: "required", instruction: "Official company registration number." },
+    taxNumber: { requirement: "optional", instruction: "Provide where tax registration exists in your jurisdiction." },
+    contactPerson: { requirement: "required", instruction: "Responsible focal person name and designation." },
+    email: { requirement: "required", instruction: "Compliance contact email used for audit communication." },
+    phone: { requirement: "optional", instruction: "Preferred phone with country code." },
+    headOfficeLat: { requirement: "optional", instruction: "Head office latitude in decimal format, or use map selection." },
+    headOfficeLng: { requirement: "optional", instruction: "Head office longitude in decimal format, or use map selection." },
+    headOfficeAddress: { requirement: "optional", instruction: "Search and select the office point on map to capture display location." },
+    operationsScope: { requirement: "conditional", instruction: "List countries of operation when multi-country operations apply.", condition: "Required if operating in multiple countries." },
+  },
+  2: {
+    facilities: { requirement: "conditional", instruction: "Capture site details: name, address, pin location, type and operating basis.", condition: "If you own/lease/operate facilities." },
+    landDocuments: { requirement: "conditional", instruction: "List land-use-right documents and issuing authorities.", condition: "If facility declaration is applicable." },
+    disputes: { requirement: "conditional", instruction: "Disclose legal disputes, sanctions, or enforcement actions with remediation references.", condition: "If any dispute/action exists." },
+    landRightsUpload: { requirement: "conditional", instruction: "Attach land title, lease, cadastral extract, or zoning approval records.", condition: "If facility declaration is applicable." },
+    disputesUpload: { requirement: "conditional", instruction: "Attach judicial decisions, rulings, or remediation records where available.", condition: "If disputes/enforcement actions exist." },
+  },
+  3: {
+    licenses: { requirement: "required", instruction: "Confirm existence of legally required operating licenses and permit references." },
+    certifications: { requirement: "conditional", instruction: "Include scheme, covered commodity, certificate ID, CoC type, and validity.", condition: "If sustainability certification is claimed." },
+    licensesUpload: { requirement: "conditional", instruction: "Attach license/permit copies supporting this declaration.", condition: "If license exists." },
+    certificationsUpload: { requirement: "conditional", instruction: "Attach valid certification documents and CoC evidence.", condition: "If certification is claimed." },
+  },
+  4: {
+    purchasedMaterials: { requirement: "required", instruction: "Specify EUDR-relevant commodities/materials purchased from upstream suppliers." },
+    upstreamEntities: { requirement: "required", instruction: "Add all upstream entities contributing to the declared material and volume share." },
+    tradeProof: { requirement: "required", instruction: "Confirm trade evidence fields are present in attached records." },
+    tradeProofUpload: { requirement: "required", instruction: "Upload invoice, delivery note, or equivalent trade evidence files." },
+    traceabilityCapabilities: { requirement: "required", instruction: "Confirm current digital and batch-level traceability capabilities." },
+    traceabilityControls: { requirement: "required", instruction: "Describe segregation controls preventing certified/non-certified mixing." },
+  },
+  5: {
+    processingActivity: { requirement: "conditional", instruction: "State refining/blending/fermentation/modification activities performed.", condition: "If processing operations are performed." },
+    outputProduct: { requirement: "conditional", instruction: "Map input commodity to output product supplied downstream.", condition: "If processing operations are performed." },
+    processingDocuments: { requirement: "conditional", instruction: "Reference process flow and environmental audit/plan evidence.", condition: "If processing operations are performed." },
+    processingUpload: { requirement: "conditional", instruction: "Attach process flow, environmental plan, and latest audit/inspection report.", condition: "If processing operations are performed." },
+    firstPointOfSale: { requirement: "required", instruction: "Provide buyer name/type/location for first point of sale." },
+  },
+  6: {
+    policies: { requirement: "conditional", instruction: "Mark documented policies and maintain attachment references.", condition: "If policy documents exist." },
+    policiesUpload: { requirement: "conditional", instruction: "Attach policy files or controlled references for verification.", condition: "If policy documents exist." },
+    thirdPartyVerification: { requirement: "optional", instruction: "Optional notes on policy evidence, review outcomes, or compliance controls." },
+  },
+  7: {
+    thirdPartyVerification: { requirement: "optional", instruction: "Optional details on certification or third-party verification scope and attachments." },
+    thirdPartyVerificationUpload: { requirement: "conditional", instruction: "Attach third-party audit/certification evidence files.", condition: "If third-party verification exists." },
+  },
+  8: {
+    signatureName: { requirement: "required", instruction: "Authorized signatory full name." },
+    designation: { requirement: "required", instruction: "Authorized signatory designation." },
+    legalName: { requirement: "required", instruction: "Company legal name linked to this declaration." },
+    declarationDate: { requirement: "required", instruction: "Date of declaration submission." },
+  },
+};
+
+const INTERMEDIARY_OPTION_LABELS: Record<string, string> = {
+  upstreamSupplier: "Name of upstream supplier / farmer",
+  date: "Date of transaction",
+  productName: "Product name",
+  hsCode: "HS code",
+  lotNumber: "Batch / lot number",
+  quantity: "Quantity supplied",
+  cocStatus: "Chain-of-custody status (Segregated / IP)",
+  millBatch: "Volume traceable to specific mill batch",
+  batchRecords: "Batch-level traceability records maintained",
+  erpReport: "ERP-generated traceability report available for audit",
+  digitalExport: "Traceability data export available (Excel / CSV / ERP extract)",
+  fiveYearRetention: "Records retained for at least five years",
+};
+
+function formatIntermediaryOptionLabel(key: string) {
+  const mapped = INTERMEDIARY_OPTION_LABELS[key];
+  if (mapped) return mapped;
+  return key
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\bhs\b/gi, "HS")
+    .replace(/\berp\b/gi, "ERP")
+    .replace(/\bcoc\b/gi, "CoC")
+    .replace(/^./, (char) => char.toUpperCase());
+}
 
 const roleOptions = [
   "Raw Material Aggregator / Consolidator",
@@ -299,6 +527,85 @@ function safeId(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "entity";
 }
 
+function defaultSection3Facilities(): Section3FacilityRow[] {
+  return [
+    { siteNo: 1, siteName: "", fullAddress: "", pinLocation: "", facilityType: "", operationalStatus: "" },
+    { siteNo: 2, siteName: "", fullAddress: "", pinLocation: "", facilityType: "", operationalStatus: "" },
+    { siteNo: 3, siteName: "", fullAddress: "", pinLocation: "", facilityType: "", operationalStatus: "" },
+  ];
+}
+
+function defaultSection3LandDocs(): Section3LandDocRow[] {
+  return [
+    { id: "land-title", documentType: "Government-issued land title / deed", existsYesNo: "", issuingAuthorityName: "", attached: false, uploadedFiles: [] },
+    { id: "lease-usufruct", documentType: "Lease or usufruct agreement", existsYesNo: "", issuingAuthorityName: "", attached: false, uploadedFiles: [] },
+    { id: "cadastral-record", documentType: "Property registry extract / cadastral record", existsYesNo: "", issuingAuthorityName: "", attached: false, uploadedFiles: [] },
+    { id: "zoning-approval", documentType: "Industrial zoning or land-use approval", existsYesNo: "", issuingAuthorityName: "", attached: false, uploadedFiles: [] },
+  ];
+}
+
+function defaultSection3LegalActions(): Section3LegalActions {
+  return {
+    hasDisputes: "no",
+    disputeExplanation: "",
+    judicialDecisions: false,
+    administrativeRulings: false,
+    settlementDocsAttached: false,
+    uploadedFiles: [],
+  };
+}
+
+function ensureIntermediaryUploads(form: IntermediaryFormState): IntermediaryFormState {
+  return {
+    ...form,
+    headOfficeAddress: form.headOfficeAddress ?? "",
+    section3Facilities:
+      Array.isArray((form as unknown as { section3Facilities?: Section3FacilityRow[] }).section3Facilities) &&
+      (form as unknown as { section3Facilities?: Section3FacilityRow[] }).section3Facilities!.length === 3
+        ? (form as unknown as { section3Facilities: Section3FacilityRow[] }).section3Facilities.map((row, index) => ({
+            siteNo: index + 1,
+            siteName: row.siteName ?? "",
+            fullAddress: row.fullAddress ?? "",
+            pinLocation: row.pinLocation ?? "",
+            facilityType: row.facilityType ?? "",
+            operationalStatus: row.operationalStatus ?? "",
+          }))
+        : defaultSection3Facilities(),
+    section3LandDocs:
+      Array.isArray((form as unknown as { section3LandDocs?: Section3LandDocRow[] }).section3LandDocs) &&
+      (form as unknown as { section3LandDocs?: Section3LandDocRow[] }).section3LandDocs!.length > 0
+        ? (form as unknown as { section3LandDocs: Section3LandDocRow[] }).section3LandDocs.map((row, index) => ({
+            id: row.id ?? `land-doc-${index + 1}`,
+            documentType: row.documentType ?? defaultSection3LandDocs()[index]?.documentType ?? "",
+            existsYesNo: row.existsYesNo ?? "",
+            issuingAuthorityName: row.issuingAuthorityName ?? "",
+            attached: !!row.attached,
+            uploadedFiles: row.uploadedFiles ?? [],
+          }))
+        : defaultSection3LandDocs(),
+    section3LegalActions: (form as unknown as { section3LegalActions?: Section3LegalActions }).section3LegalActions
+      ? {
+          hasDisputes: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.hasDisputes ?? "no",
+          disputeExplanation: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.disputeExplanation ?? "",
+          judicialDecisions: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.judicialDecisions,
+          administrativeRulings: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.administrativeRulings,
+          settlementDocsAttached: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.settlementDocsAttached,
+          uploadedFiles: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.uploadedFiles ?? [],
+        }
+      : defaultSection3LegalActions(),
+    documentUploads: {
+      landRights: form.documentUploads?.landRights ?? [],
+      disputes: form.documentUploads?.disputes ?? [],
+      licenses: form.documentUploads?.licenses ?? [],
+      certifications: form.documentUploads?.certifications ?? [],
+      tradeProof: form.documentUploads?.tradeProof ?? [],
+      processing: form.documentUploads?.processing ?? [],
+      policies: form.documentUploads?.policies ?? [],
+      thirdPartyVerification: form.documentUploads?.thirdPartyVerification ?? [],
+    },
+  };
+}
+
 function defaultIntermediaryForm(name: string, email = ""): IntermediaryFormState {
   return {
     roles: ["Primary Processor"],
@@ -313,10 +620,11 @@ function defaultIntermediaryForm(name: string, email = ""): IntermediaryFormStat
     phone: "",
     headOfficeLat: "",
     headOfficeLng: "",
+    headOfficeAddress: "",
     operationsScope: "Single country where business is registered.",
-    facilities: "",
-    landDocuments: "",
-    disputes: "No",
+    section3Facilities: defaultSection3Facilities(),
+    section3LandDocs: defaultSection3LandDocs(),
+    section3LegalActions: defaultSection3LegalActions(),
     licenses: "",
     certifications: "",
     purchasedMaterials: "",
@@ -353,6 +661,16 @@ function defaultIntermediaryForm(name: string, email = ""): IntermediaryFormStat
       dueDiligence: false,
     },
     thirdPartyVerification: "",
+    documentUploads: {
+      landRights: [],
+      disputes: [],
+      licenses: [],
+      certifications: [],
+      tradeProof: [],
+      processing: [],
+      policies: [],
+      thirdPartyVerification: [],
+    },
     signatureName: "",
     designation: "",
     declarationDate: "2026-05-22",
@@ -433,11 +751,279 @@ function defaultFarmerForm(name: string): FarmerFormState {
   };
 }
 
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+function InstructionCard({ tone, title, items }: { tone: InstructionTone; title: string; items: string[] }) {
+  const toneClasses =
+    tone === "important"
+      ? "border-state-warning/40 bg-state-warning/10 text-brand-primary"
+      : tone === "howTo"
+        ? "border-border-soft bg-bg-surface-alt text-text-secondary"
+        : tone === "ifApplicable"
+          ? "border-state-info/30 bg-state-info/10 text-brand-primary"
+          : "border-state-success/30 bg-state-success/10 text-brand-primary";
+  const Icon = tone === "important" ? AlertCircle : tone === "howTo" ? Info : tone === "ifApplicable" ? HelpCircle : FileText;
   return (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
+    <div className={`rounded-xl border p-3 ${toneClasses}`}>
+      <p className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {title}
+      </p>
+      <ul className="space-y-1 text-xs leading-relaxed">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function InfoRow({
+  label,
+  children,
+  requirement,
+  instruction,
+  condition,
+}: {
+  label: string;
+  children: React.ReactNode;
+  requirement?: FieldRequirement;
+  instruction?: string;
+  condition?: string;
+}) {
+  const requirementText = requirement ? `${requirement.charAt(0).toUpperCase()}${requirement.slice(1)}` : null;
+  return (
+    <div className="form-group space-y-1.5">
+      <label className="form-label flex flex-wrap items-center gap-1.5">
+        <span>{label}</span>
+        {requirementText ? <span className="text-xs font-semibold text-text-secondary">({requirementText})</span> : null}
+      </label>
+      {instruction ? <p className="text-xs text-text-secondary">{instruction}</p> : null}
+      {condition ? <p className="text-xs font-medium text-state-info">Condition: {condition}</p> : null}
       {children}
+    </div>
+  );
+}
+
+function DocumentUploadInput({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <input
+        type="file"
+        multiple
+        onChange={(event) => {
+          const files = event.target.files ? Array.from(event.target.files).map((file) => file.name) : [];
+          onChange(files);
+        }}
+        className="form-input"
+      />
+      <p className="text-xs text-text-secondary">
+        {value.length > 0 ? `${value.length} file(s): ${value.join(", ")}` : "No files selected"}
+      </p>
+    </div>
+  );
+}
+
+function LocationPickerModal({
+  open,
+  initialLat,
+  initialLng,
+  initialAddress,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  initialLat: string;
+  initialLng: string;
+  initialAddress: string;
+  onConfirm: (payload: { lat: string; lng: string; address: string }) => void;
+  onClose: () => void;
+}) {
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  const fallbackLat = Number(initialLat);
+  const fallbackLng = Number(initialLng);
+  const hasInitialPoint = Number.isFinite(fallbackLat) && Number.isFinite(fallbackLng);
+
+  const [searchQuery, setSearchQuery] = useState(initialAddress || "");
+  const [results, setResults] = useState<GeocodeFeature[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [pendingAddress, setPendingAddress] = useState(initialAddress || "");
+  const [pendingLat, setPendingLat] = useState(hasInitialPoint ? fallbackLat : 24.8607);
+  const [pendingLng, setPendingLng] = useState(hasInitialPoint ? fallbackLng : 67.0011);
+  const [viewState, setViewState] = useState({
+    latitude: hasInitialPoint ? fallbackLat : 24.8607,
+    longitude: hasInitialPoint ? fallbackLng : 67.0011,
+    zoom: hasInitialPoint ? 11 : 4,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const lat = Number(initialLat);
+    const lng = Number(initialLng);
+    const valid = Number.isFinite(lat) && Number.isFinite(lng);
+    const nextLat = valid ? lat : 24.8607;
+    const nextLng = valid ? lng : 67.0011;
+    setPendingLat(nextLat);
+    setPendingLng(nextLng);
+    setPendingAddress(initialAddress || "");
+    setSearchQuery(initialAddress || "");
+    setResults([]);
+    setViewState({ latitude: nextLat, longitude: nextLng, zoom: valid ? 11 : 4 });
+  }, [open, initialLat, initialLng, initialAddress]);
+
+  useEffect(() => {
+    if (!open || !mapboxToken || searchQuery.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(async () => {
+      try {
+        setIsSearching(true);
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchQuery.trim())}.json?access_token=${mapboxToken}&autocomplete=true&limit=5`;
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) return;
+        const data = await response.json();
+        setResults((data.features ?? []) as GeocodeFeature[]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 280);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [searchQuery, open, mapboxToken]);
+
+  if (!open) return null;
+
+  const latValid = pendingLat >= -90 && pendingLat <= 90;
+  const lngValid = pendingLng >= -180 && pendingLng <= 180;
+  const canConfirm = latValid && lngValid;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-4xl rounded-xl border border-border-soft bg-bg-surface shadow-xl">
+        <div className="flex items-center justify-between border-b border-border-soft px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-brand-primary">Head Office Location Picker</p>
+            <p className="text-xs text-text-secondary">Search place or drop a pin to capture exact coordinates.</p>
+          </div>
+          <button type="button" className="btn-secondary px-3 py-1 text-xs" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        {!mapboxToken ? (
+          <div className="p-4">
+            <div className="rounded-lg border border-state-error/40 bg-state-error/10 p-3 text-sm text-state-error">
+              Mapbox token is missing. Set <code>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> to enable map selection.
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 p-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-text-secondary">Search location</label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-text-secondary" aria-hidden="true" />
+                <input
+                  className="form-input pl-8"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search address or place"
+                />
+              </div>
+              <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-border-soft bg-bg-surface-alt p-2">
+                {results.length === 0 ? (
+                  <p className="px-1 py-1 text-xs text-text-secondary">{isSearching ? "Searching..." : "Type at least 3 characters to search."}</p>
+                ) : (
+                  results.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="w-full rounded-md px-2 py-1.5 text-left text-xs text-brand-primary hover:bg-bg-page"
+                      onClick={() => {
+                        const [lng, lat] = item.center;
+                        setPendingLat(lat);
+                        setPendingLng(lng);
+                        setPendingAddress(item.place_name);
+                        setViewState({ latitude: lat, longitude: lng, zoom: 12 });
+                        setResults([]);
+                      }}
+                    >
+                      {item.place_name}
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="rounded-md border border-border-soft bg-bg-surface-alt p-2 text-xs text-text-secondary">
+                <p>Latitude: {pendingLat.toFixed(6)}</p>
+                <p>Longitude: {pendingLng.toFixed(6)}</p>
+                <p className="mt-1 break-words">Address: {pendingAddress || "Not selected"}</p>
+              </div>
+              <p className="text-xs text-text-secondary">Click map or drag marker to refine location.</p>
+            </div>
+
+            <div className="min-h-[360px] overflow-hidden rounded-lg border border-border-soft">
+              <Map
+                mapboxAccessToken={mapboxToken}
+                mapStyle="mapbox://styles/mapbox/streets-v12"
+                longitude={viewState.longitude}
+                latitude={viewState.latitude}
+                zoom={viewState.zoom}
+                onMove={(event) => setViewState(event.viewState)}
+                onClick={(event) => {
+                  setPendingLat(event.lngLat.lat);
+                  setPendingLng(event.lngLat.lng);
+                  setPendingAddress("");
+                }}
+                attributionControl
+                style={{ width: "100%", height: "100%" }}
+              >
+                <NavigationControl position="top-right" />
+                <Marker
+                  longitude={pendingLng}
+                  latitude={pendingLat}
+                  draggable
+                  onDragEnd={(event) => {
+                    setPendingLat(event.lngLat.lat);
+                    setPendingLng(event.lngLat.lng);
+                    setPendingAddress("");
+                  }}
+                >
+                  <MapPinned className="h-5 w-5 text-brand-accent" />
+                </Marker>
+              </Map>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 border-t border-border-soft px-4 py-3">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!canConfirm || !mapboxToken}
+            onClick={() =>
+              onConfirm({
+                lat: pendingLat.toFixed(6),
+                lng: pendingLng.toFixed(6),
+                address: pendingAddress,
+              })
+            }
+          >
+            Confirm location
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -468,6 +1054,7 @@ function SupplierPortalContent() {
   const [locale, setLocale] = useState<SupportedLocale>("en");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [validationIssues, setValidationIssues] = useState<string[]>([]);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
 
   const copy = PORTAL_COPY[locale] ?? PORTAL_COPY.en;
   const isRtl = RTL_LOCALES.has(locale);
@@ -498,7 +1085,16 @@ function SupplierPortalContent() {
   useEffect(() => {
     const storedIntermediary = localStorage.getItem("gfi_exact_intermediary_forms");
     const storedFarmer = localStorage.getItem("gfi_exact_farmer_forms");
-    setIntermediaryForms(storedIntermediary ? JSON.parse(storedIntermediary) : {});
+    if (storedIntermediary) {
+      const parsed = JSON.parse(storedIntermediary) as Record<string, IntermediaryFormState>;
+      const normalized = Object.fromEntries(
+        Object.entries(parsed).map(([requestId, form]) => [requestId, ensureIntermediaryUploads(form)]),
+      );
+      setIntermediaryForms(normalized);
+      localStorage.setItem("gfi_exact_intermediary_forms", JSON.stringify(normalized));
+    } else {
+      setIntermediaryForms({});
+    }
     setFarmerForms(storedFarmer ? JSON.parse(storedFarmer) : {});
   }, []);
 
@@ -529,6 +1125,19 @@ function SupplierPortalContent() {
     localStorage.setItem("gfi_exact_intermediary_forms", JSON.stringify(next));
     setLastSavedAt(new Date().toISOString());
     setValidationIssues([]);
+  };
+
+  const updateIntermediaryUpload = (
+    key: keyof IntermediaryFormState["documentUploads"],
+    files: string[],
+  ) => {
+    if (!intermediaryForm) return;
+    updateIntermediaryForm({
+      documentUploads: {
+        ...intermediaryForm.documentUploads,
+        [key]: files,
+      },
+    });
   };
 
   const updateFarmerForm = (updates: Partial<FarmerFormState>) => {
@@ -577,6 +1186,15 @@ function SupplierPortalContent() {
   const formatLocalDateTime = (isoString: string) => {
     const date = new Date(isoString);
     return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
+  };
+
+  const validateCoordinate = (value: string, type: "lat" | "lng") => {
+    if (!value.trim()) return null;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return type === "lat" ? "Latitude must be a valid number." : "Longitude must be a valid number.";
+    if (type === "lat" && (numeric < -90 || numeric > 90)) return "Latitude must be between -90 and 90.";
+    if (type === "lng" && (numeric < -180 || numeric > 180)) return "Longitude must be between -180 and 180.";
+    return null;
   };
 
   const addUpstreamRow = () => {
@@ -631,7 +1249,11 @@ function SupplierPortalContent() {
       sections: {
         section1: { roles: intermediaryForm.roles, suppliedCommodities: intermediaryForm.suppliedCommodities },
         section2: { legalName: intermediaryForm.legalName, country: intermediaryForm.country, email: intermediaryForm.email },
-        section3: { facilities: intermediaryForm.facilities, landDocuments: intermediaryForm.landDocuments, disputes: intermediaryForm.disputes },
+        section3: {
+          facilities: intermediaryForm.section3Facilities,
+          landDocumentMatrix: intermediaryForm.section3LandDocs,
+          legalActions: intermediaryForm.section3LegalActions,
+        },
         section4: { licenses: intermediaryForm.licenses, certifications: intermediaryForm.certifications },
         section5A: { purchasedMaterials: intermediaryForm.purchasedMaterials, tradeProof: intermediaryForm.tradeProof, traceabilityCapabilities: intermediaryForm.traceabilityCapabilities },
         section5B: { processingActivity: intermediaryForm.processingActivity, outputProduct: intermediaryForm.outputProduct, firstPointOfSale: intermediaryForm.firstPointOfSale },
@@ -738,17 +1360,17 @@ function SupplierPortalContent() {
     setNotice(
       hasBlockingGeo || missingGeo
         ? "Farmer declaration submitted, but geolocation validation still has blocking gaps."
-        : "Farmer declaration submitted. This chain branch is now complete â€” status propagated up the supply chain.",
+        : "Farmer declaration submitted. This chain branch is now complete - status propagated up the supply chain.",
     );
     setTimeout(() => setNotice(null), 6000);
   };
 
   const renderCheckboxGroup = (items: string[], selected: string[], onChange: (next: string[]) => void) => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 w-full" style={{ minWidth: 0 }}>
+    <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => (
-        <label key={item} style={{ display: "flex", gap: "8px", alignItems: "flex-start", color: "var(--fos-primary)", fontSize: "var(--text-xs)", minWidth: 0, cursor: "pointer" }}>
-          <input type="checkbox" checked={selected.includes(item)} onChange={() => onChange(toggleArray(item, selected))} style={{ marginTop: "2px" }} />
-          <span style={{ minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.3 }}>{item}</span>
+        <label key={item} className="flex min-w-0 cursor-pointer items-start gap-2 text-xs text-brand-primary">
+          <input className="mt-0.5" type="checkbox" checked={selected.includes(item)} onChange={() => onChange(toggleArray(item, selected))} />
+          <span className="min-w-0 break-words leading-snug">{item}</span>
         </label>
       ))}
     </div>
@@ -761,10 +1383,19 @@ function SupplierPortalContent() {
     if (section === 0) {
       return (
         <>
-          <InfoRow label="1.1 Please indicate your role(s) in the supply chain">
+          <InstructionCard {...INTERMEDIARY_SECTION_INSTRUCTIONS[0]} />
+          <InfoRow
+            label="1.1 Please indicate your role(s) in the supply chain"
+            requirement={INTERMEDIARY_FIELD_META[0].roles.requirement}
+            instruction={INTERMEDIARY_FIELD_META[0].roles.instruction}
+          >
             {renderCheckboxGroup(roleOptions, intermediaryForm.roles, (roles) => updateIntermediaryForm({ roles }))}
           </InfoRow>
-          <InfoRow label="1.2 Which EUDR-relevant commodity/product do you supply to the buyer?">
+          <InfoRow
+            label="1.2 Which EUDR-relevant commodity/product do you supply to the buyer?"
+            requirement={INTERMEDIARY_FIELD_META[0].suppliedCommodities.requirement}
+            instruction={INTERMEDIARY_FIELD_META[0].suppliedCommodities.instruction}
+          >
             {renderCheckboxGroup(commodityOptions, intermediaryForm.suppliedCommodities, (suppliedCommodities) => updateIntermediaryForm({ suppliedCommodities }))}
           </InfoRow>
         </>
@@ -773,64 +1404,480 @@ function SupplierPortalContent() {
 
     if (section === 1) {
       return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ minWidth: 0 }}>
-          <InfoRow label="Legal Name of Company"><input className="form-input" value={intermediaryForm.legalName} onChange={(e) => updateIntermediaryForm({ legalName: e.target.value })} /></InfoRow>
-          <InfoRow label="Country of Registration"><input className="form-input" value={intermediaryForm.country} onChange={(e) => updateIntermediaryForm({ country: e.target.value })} /></InfoRow>
-          <InfoRow label="Registered Address"><input className="form-input" value={intermediaryForm.registeredAddress} onChange={(e) => updateIntermediaryForm({ registeredAddress: e.target.value })} /></InfoRow>
-          <InfoRow label="Company Registration Number"><input className="form-input" value={intermediaryForm.registrationNumber} onChange={(e) => updateIntermediaryForm({ registrationNumber: e.target.value })} /></InfoRow>
-          <InfoRow label="Tax Registration Number"><input className="form-input" value={intermediaryForm.taxNumber} onChange={(e) => updateIntermediaryForm({ taxNumber: e.target.value })} /></InfoRow>
-          <InfoRow label="Contact Person"><input className="form-input" value={intermediaryForm.contactPerson} onChange={(e) => updateIntermediaryForm({ contactPerson: e.target.value })} /></InfoRow>
-          <InfoRow label="Email"><input className="form-input" value={intermediaryForm.email} onChange={(e) => updateIntermediaryForm({ email: e.target.value })} /></InfoRow>
-          <InfoRow label="Phone"><input className="form-input" value={intermediaryForm.phone} onChange={(e) => updateIntermediaryForm({ phone: e.target.value })} /></InfoRow>
-          <InfoRow label="Head Office Latitude"><input className="form-input" value={intermediaryForm.headOfficeLat} onChange={(e) => updateIntermediaryForm({ headOfficeLat: e.target.value })} /></InfoRow>
-          <InfoRow label="Head Office Longitude"><input className="form-input" value={intermediaryForm.headOfficeLng} onChange={(e) => updateIntermediaryForm({ headOfficeLng: e.target.value })} /></InfoRow>
-          <InfoRow label="Scope of Operations"><input className="form-input" value={intermediaryForm.operationsScope} onChange={(e) => updateIntermediaryForm({ operationsScope: e.target.value })} /></InfoRow>
+        <div className="space-y-3">
+          <InstructionCard {...INTERMEDIARY_SECTION_INSTRUCTIONS[1]} />
+          <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
+            <InfoRow label="Legal Name of Company" requirement={INTERMEDIARY_FIELD_META[1].legalName.requirement} instruction={INTERMEDIARY_FIELD_META[1].legalName.instruction}><input className="form-input" value={intermediaryForm.legalName} onChange={(e) => updateIntermediaryForm({ legalName: e.target.value })} /></InfoRow>
+            <InfoRow label="Country of Registration" requirement={INTERMEDIARY_FIELD_META[1].country.requirement} instruction={INTERMEDIARY_FIELD_META[1].country.instruction}><input className="form-input" value={intermediaryForm.country} onChange={(e) => updateIntermediaryForm({ country: e.target.value })} /></InfoRow>
+            <InfoRow label="Registered Address" requirement={INTERMEDIARY_FIELD_META[1].registeredAddress.requirement} instruction={INTERMEDIARY_FIELD_META[1].registeredAddress.instruction}><input className="form-input" value={intermediaryForm.registeredAddress} onChange={(e) => updateIntermediaryForm({ registeredAddress: e.target.value })} /></InfoRow>
+            <InfoRow label="Company Registration Number" requirement={INTERMEDIARY_FIELD_META[1].registrationNumber.requirement} instruction={INTERMEDIARY_FIELD_META[1].registrationNumber.instruction}><input className="form-input" value={intermediaryForm.registrationNumber} onChange={(e) => updateIntermediaryForm({ registrationNumber: e.target.value })} /></InfoRow>
+            <InfoRow label="Tax Registration Number" requirement={INTERMEDIARY_FIELD_META[1].taxNumber.requirement} instruction={INTERMEDIARY_FIELD_META[1].taxNumber.instruction}><input className="form-input" value={intermediaryForm.taxNumber} onChange={(e) => updateIntermediaryForm({ taxNumber: e.target.value })} /></InfoRow>
+            <InfoRow label="Contact Person" requirement={INTERMEDIARY_FIELD_META[1].contactPerson.requirement} instruction={INTERMEDIARY_FIELD_META[1].contactPerson.instruction}><input className="form-input" value={intermediaryForm.contactPerson} onChange={(e) => updateIntermediaryForm({ contactPerson: e.target.value })} /></InfoRow>
+            <InfoRow label="Email" requirement={INTERMEDIARY_FIELD_META[1].email.requirement} instruction={INTERMEDIARY_FIELD_META[1].email.instruction}><input className="form-input" value={intermediaryForm.email} onChange={(e) => updateIntermediaryForm({ email: e.target.value })} /></InfoRow>
+            <InfoRow label="Phone" requirement={INTERMEDIARY_FIELD_META[1].phone.requirement} instruction={INTERMEDIARY_FIELD_META[1].phone.instruction}><input className="form-input" value={intermediaryForm.phone} onChange={(e) => updateIntermediaryForm({ phone: e.target.value })} /></InfoRow>
+            <InfoRow
+              label="Head Office Latitude"
+              requirement={INTERMEDIARY_FIELD_META[1].headOfficeLat.requirement}
+              instruction={INTERMEDIARY_FIELD_META[1].headOfficeLat.instruction}
+            >
+              <input className="form-input" value={intermediaryForm.headOfficeLat} onChange={(e) => updateIntermediaryForm({ headOfficeLat: e.target.value })} />
+              {validateCoordinate(intermediaryForm.headOfficeLat, "lat") ? (
+                <p className="mt-1 text-xs text-state-error">{validateCoordinate(intermediaryForm.headOfficeLat, "lat")}</p>
+              ) : null}
+            </InfoRow>
+            <InfoRow
+              label="Head Office Longitude"
+              requirement={INTERMEDIARY_FIELD_META[1].headOfficeLng.requirement}
+              instruction={INTERMEDIARY_FIELD_META[1].headOfficeLng.instruction}
+            >
+              <input className="form-input" value={intermediaryForm.headOfficeLng} onChange={(e) => updateIntermediaryForm({ headOfficeLng: e.target.value })} />
+              {validateCoordinate(intermediaryForm.headOfficeLng, "lng") ? (
+                <p className="mt-1 text-xs text-state-error">{validateCoordinate(intermediaryForm.headOfficeLng, "lng")}</p>
+              ) : null}
+            </InfoRow>
+            <div className="md:col-span-2 space-y-2 rounded-lg border border-border-soft bg-bg-surface-alt p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-brand-primary">Map-based location picker</p>
+                <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setIsLocationPickerOpen(true)}>
+                  Select on map
+                </button>
+              </div>
+              <InfoRow
+                label="Selected head office address"
+                requirement={INTERMEDIARY_FIELD_META[1].headOfficeAddress.requirement}
+                instruction={INTERMEDIARY_FIELD_META[1].headOfficeAddress.instruction}
+              >
+                <input className="form-input" value={intermediaryForm.headOfficeAddress} readOnly placeholder="No map address selected yet" />
+              </InfoRow>
+            </div>
+            <InfoRow
+              label="Scope of Operations"
+              requirement={INTERMEDIARY_FIELD_META[1].operationsScope.requirement}
+              instruction={INTERMEDIARY_FIELD_META[1].operationsScope.instruction}
+              condition={INTERMEDIARY_FIELD_META[1].operationsScope.condition}
+            >
+              <input className="form-input" value={intermediaryForm.operationsScope} onChange={(e) => updateIntermediaryForm({ operationsScope: e.target.value })} />
+            </InfoRow>
+          </div>
         </div>
       );
     }
 
-    if (section === 2 || section === 3 || section === 5 || section === 6 || section === 7) {
+    if (section === 2) {
+      return (
+        <div className="space-y-4">
+          <InstructionCard
+            tone="ifApplicable"
+            title="Section 3 applicability"
+            items={["Complete this section if you own or operate production, processing, or storage facilities."]}
+          />
+
+          <div className="rounded-lg border border-border-soft bg-bg-surface">
+            <div className="border-b border-border-soft px-3 py-2">
+              <h3 className="text-sm font-semibold text-brand-primary">
+                3.1 Do you own, lease or operate any production, processing or storage facilities?
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead className="sticky top-0 bg-bg-surface-alt text-text-secondary">
+                  <tr>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Site No.</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Site Name</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Full Address</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Pin Locations</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Type of Facility</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Operational Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {intermediaryForm.section3Facilities.map((row, rowIndex) => (
+                    <tr key={`facility-${row.siteNo}`}>
+                      <td className="border-b border-border-soft px-2 py-2 text-text-secondary">{row.siteNo}</td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <input
+                          className="form-input"
+                          value={row.siteName}
+                          onChange={(event) => {
+                            const next = [...intermediaryForm.section3Facilities];
+                            next[rowIndex] = { ...row, siteName: event.target.value };
+                            updateIntermediaryForm({ section3Facilities: next });
+                          }}
+                        />
+                      </td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <input
+                          className="form-input"
+                          value={row.fullAddress}
+                          onChange={(event) => {
+                            const next = [...intermediaryForm.section3Facilities];
+                            next[rowIndex] = { ...row, fullAddress: event.target.value };
+                            updateIntermediaryForm({ section3Facilities: next });
+                          }}
+                        />
+                      </td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <input
+                          className="form-input"
+                          placeholder="31.5204, 74.3587"
+                          value={row.pinLocation}
+                          onChange={(event) => {
+                            const next = [...intermediaryForm.section3Facilities];
+                            next[rowIndex] = { ...row, pinLocation: event.target.value };
+                            updateIntermediaryForm({ section3Facilities: next });
+                          }}
+                        />
+                      </td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <select
+                          className="form-select"
+                          value={row.facilityType}
+                          onChange={(event) => {
+                            const next = [...intermediaryForm.section3Facilities];
+                            next[rowIndex] = { ...row, facilityType: event.target.value as FacilityType };
+                            updateIntermediaryForm({ section3Facilities: next });
+                          }}
+                        >
+                          <option value="">Select</option>
+                          <option value="Production">Production</option>
+                          <option value="Processing">Processing</option>
+                          <option value="Storage">Storage</option>
+                        </select>
+                      </td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          {(["Own", "Lease", "Contract"] as const).map((status) => (
+                            <label key={status} className="inline-flex items-center gap-1 text-xs text-brand-primary">
+                              <input
+                                type="radio"
+                                name={`facility-status-${row.siteNo}`}
+                                checked={row.operationalStatus === status}
+                                onChange={() => {
+                                  const next = [...intermediaryForm.section3Facilities];
+                                  next[rowIndex] = { ...row, operationalStatus: status };
+                                  updateIntermediaryForm({ section3Facilities: next });
+                                }}
+                              />
+                              <span>{status}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border-soft bg-bg-surface">
+            <div className="border-b border-border-soft px-3 py-2">
+              <p className="text-sm font-semibold text-brand-primary">If yes, please indicate which documents exist and attach copies.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead className="sticky top-0 bg-bg-surface-alt text-text-secondary">
+                  <tr>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Document Type</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Exists (Yes/No)</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Issuing Authority Name</th>
+                    <th className="border-b border-border-soft px-2 py-2 text-left">Document Attached</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {intermediaryForm.section3LandDocs.map((row, rowIndex) => (
+                    <tr key={row.id}>
+                      <td className="border-b border-border-soft px-2 py-2 text-brand-primary">{row.documentType}</td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <div className="flex gap-3">
+                          <label className="inline-flex items-center gap-1">
+                            <input
+                              type="radio"
+                              name={`doc-exists-${row.id}`}
+                              checked={row.existsYesNo === "YES"}
+                              onChange={() => {
+                                const next = [...intermediaryForm.section3LandDocs];
+                                next[rowIndex] = { ...row, existsYesNo: "YES" };
+                                updateIntermediaryForm({ section3LandDocs: next });
+                              }}
+                            />
+                            <span>Yes</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1">
+                            <input
+                              type="radio"
+                              name={`doc-exists-${row.id}`}
+                              checked={row.existsYesNo === "NO"}
+                              onChange={() => {
+                                const next = [...intermediaryForm.section3LandDocs];
+                                next[rowIndex] = { ...row, existsYesNo: "NO" };
+                                updateIntermediaryForm({ section3LandDocs: next });
+                              }}
+                            />
+                            <span>No</span>
+                          </label>
+                        </div>
+                      </td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <input
+                          className="form-input"
+                          value={row.issuingAuthorityName}
+                          onChange={(event) => {
+                            const next = [...intermediaryForm.section3LandDocs];
+                            next[rowIndex] = { ...row, issuingAuthorityName: event.target.value };
+                            updateIntermediaryForm({ section3LandDocs: next });
+                          }}
+                        />
+                      </td>
+                      <td className="border-b border-border-soft px-2 py-2">
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={row.attached}
+                            onChange={(event) => {
+                              const next = [...intermediaryForm.section3LandDocs];
+                              next[rowIndex] = {
+                                ...row,
+                                attached: event.target.checked,
+                                uploadedFiles: event.target.checked ? row.uploadedFiles : [],
+                              };
+                              updateIntermediaryForm({ section3LandDocs: next });
+                            }}
+                          />
+                          <span>Attached</span>
+                        </label>
+                        <div className="mt-2">
+                          <DocumentUploadInput
+                            value={row.uploadedFiles}
+                            onChange={(files) => {
+                              const next = [...intermediaryForm.section3LandDocs];
+                              next[rowIndex] = { ...row, uploadedFiles: files, attached: files.length > 0 || row.attached };
+                              updateIntermediaryForm({ section3LandDocs: next });
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border-soft bg-bg-surface p-3">
+            <p className="text-sm font-semibold text-brand-primary">
+              3.2 Have there been any legal disputes, sanctions or enforcement actions related to land, environment, labor or production?
+            </p>
+            <div className="mt-2 flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="section3-disputes"
+                  checked={intermediaryForm.section3LegalActions.hasDisputes === "no"}
+                  onChange={() =>
+                    updateIntermediaryForm({
+                      section3LegalActions: { ...intermediaryForm.section3LegalActions, hasDisputes: "no" },
+                    })
+                  }
+                />
+                <span>No</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="section3-disputes"
+                  checked={intermediaryForm.section3LegalActions.hasDisputes === "yes"}
+                  onChange={() =>
+                    updateIntermediaryForm({
+                      section3LegalActions: { ...intermediaryForm.section3LegalActions, hasDisputes: "yes" },
+                    })
+                  }
+                />
+                <span>Yes (please explain briefly)</span>
+              </label>
+            </div>
+            {intermediaryForm.section3LegalActions.hasDisputes === "yes" ? (
+              <textarea
+                className="form-input mt-3"
+                rows={4}
+                value={intermediaryForm.section3LegalActions.disputeExplanation}
+                onChange={(event) =>
+                  updateIntermediaryForm({
+                    section3LegalActions: {
+                      ...intermediaryForm.section3LegalActions,
+                      disputeExplanation: event.target.value,
+                    },
+                  })
+                }
+              />
+            ) : null}
+            <div className="mt-4 space-y-2 rounded-md border border-border-soft bg-bg-surface-alt p-3 text-sm">
+              <p className="font-medium text-brand-primary">
+                If yes, attach (if applicable): judicial decisions, administrative rulings, settlement/remediation documents.
+              </p>
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={intermediaryForm.section3LegalActions.judicialDecisions}
+                  onChange={(event) =>
+                    updateIntermediaryForm({
+                      section3LegalActions: {
+                        ...intermediaryForm.section3LegalActions,
+                        judicialDecisions: event.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>Judicial decisions</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={intermediaryForm.section3LegalActions.administrativeRulings}
+                  onChange={(event) =>
+                    updateIntermediaryForm({
+                      section3LegalActions: {
+                        ...intermediaryForm.section3LegalActions,
+                        administrativeRulings: event.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>Administrative rulings</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={intermediaryForm.section3LegalActions.settlementDocsAttached}
+                  onChange={(event) =>
+                    updateIntermediaryForm({
+                      section3LegalActions: {
+                        ...intermediaryForm.section3LegalActions,
+                        settlementDocsAttached: event.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span>Settlement or remediation documents attached</span>
+              </label>
+              <DocumentUploadInput
+                value={intermediaryForm.section3LegalActions.uploadedFiles}
+                onChange={(files) =>
+                  updateIntermediaryForm({
+                    section3LegalActions: {
+                      ...intermediaryForm.section3LegalActions,
+                      uploadedFiles: files,
+                    },
+                  })
+                }
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (section === 3 || section === 5 || section === 6 || section === 7) {
       const fields =
-        section === 2
+        section === 3
           ? [
-              ["Facilities table: site name, address, pin location, facility type and status", "facilities"],
-              ["Land/right documents and issuing authorities", "landDocuments"],
-              ["Legal disputes, sanctions, enforcement actions or settlement documents", "disputes"],
+              ["Business registration, manufacturing, food safety, environmental and import/export licenses", "licenses"],
+              ["Sustainability certification scheme, commodity, certificate number, CoC type and validity", "certifications"],
             ]
-          : section === 3
+          : section === 5
             ? [
-                ["Business registration, manufacturing, food safety, environmental and import/export licenses", "licenses"],
-                ["Sustainability certification scheme, commodity, certificate number, CoC type and validity", "certifications"],
+                ["Processing/refining/blending/fermentation/chemical modification activity", "processingActivity"],
+                ["Input commodity purchased, processing performed and output product supplied", "outputProduct"],
+                ["Process flow, environmental plan and latest environmental audit availability", "processingDocuments"],
+                ["First point of sale: buyer, buyer type and location", "firstPointOfSale"],
               ]
-            : section === 5
-              ? [
-                  ["Processing/refining/blending/fermentation/chemical modification activity", "processingActivity"],
-                  ["Input commodity purchased, processing performed and output product supplied", "outputProduct"],
-                  ["Process flow, environmental plan and latest environmental audit availability", "processingDocuments"],
-                  ["First point of sale: buyer, buyer type and location", "firstPointOfSale"],
-                ]
-              : section === 6
-                ? [["Policy evidence notes for health and safety, environment, anti-deforestation, labour and due diligence", "thirdPartyVerification"]]
-                : [["Certification, third-party audit scope, validity period and attachment notes", "thirdPartyVerification"]];
+            : section === 6
+              ? [["Policy evidence notes for health and safety, environment, anti-deforestation, labour and due diligence", "thirdPartyVerification"]]
+              : [["Certification, third-party audit scope, validity period and attachment notes", "thirdPartyVerification"]];
       return (
         <>
+          <InstructionCard {...INTERMEDIARY_SECTION_INSTRUCTIONS[section]} />
           {fields.map(([label, key]) => (
-            <InfoRow key={key} label={label}>
+            <InfoRow
+              key={key}
+              label={label}
+              requirement={INTERMEDIARY_FIELD_META[section][key]?.requirement}
+              instruction={INTERMEDIARY_FIELD_META[section][key]?.instruction}
+              condition={INTERMEDIARY_FIELD_META[section][key]?.condition}
+            >
               <textarea className="form-input" rows={3} value={(intermediaryForm as any)[key]} onChange={(e) => updateIntermediaryForm({ [key]: e.target.value } as any)} />
             </InfoRow>
           ))}
           {section === 6 && (
-            <InfoRow label="Documented company policies">
+            <InfoRow
+              label="Documented company policies"
+              requirement={INTERMEDIARY_FIELD_META[6].policies.requirement}
+              instruction={INTERMEDIARY_FIELD_META[6].policies.instruction}
+              condition={INTERMEDIARY_FIELD_META[6].policies.condition}
+            >
               {Object.keys(intermediaryForm.policies).map((key) => (
-                <label key={key} style={{ display: "inline-flex", gap: "6px", marginRight: "12px", fontSize: "var(--text-xs)", maxWidth: "100%", alignItems: "flex-start" }}>
+                <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
                   <input
                     type="checkbox"
                     checked={intermediaryForm.policies[key]}
                     onChange={() => updateIntermediaryForm({ policies: { ...intermediaryForm.policies, [key]: !intermediaryForm.policies[key] } })}
                   />
-                  <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{key}</span>
+                  <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
                 </label>
               ))}
+            </InfoRow>
+          )}
+          {section === 3 && (
+            <>
+              <InfoRow
+                label="License/permit document upload"
+                requirement={INTERMEDIARY_FIELD_META[3].licensesUpload.requirement}
+                instruction={INTERMEDIARY_FIELD_META[3].licensesUpload.instruction}
+                condition={INTERMEDIARY_FIELD_META[3].licensesUpload.condition}
+              >
+                <DocumentUploadInput value={intermediaryForm.documentUploads.licenses} onChange={(files) => updateIntermediaryUpload("licenses", files)} />
+              </InfoRow>
+              <InfoRow
+                label="Certification evidence upload"
+                requirement={INTERMEDIARY_FIELD_META[3].certificationsUpload.requirement}
+                instruction={INTERMEDIARY_FIELD_META[3].certificationsUpload.instruction}
+                condition={INTERMEDIARY_FIELD_META[3].certificationsUpload.condition}
+              >
+                <DocumentUploadInput value={intermediaryForm.documentUploads.certifications} onChange={(files) => updateIntermediaryUpload("certifications", files)} />
+              </InfoRow>
+            </>
+          )}
+          {section === 5 && (
+            <InfoRow
+              label="Processing and environmental documents upload"
+              requirement={INTERMEDIARY_FIELD_META[5].processingUpload.requirement}
+              instruction={INTERMEDIARY_FIELD_META[5].processingUpload.instruction}
+              condition={INTERMEDIARY_FIELD_META[5].processingUpload.condition}
+            >
+              <DocumentUploadInput value={intermediaryForm.documentUploads.processing} onChange={(files) => updateIntermediaryUpload("processing", files)} />
+            </InfoRow>
+          )}
+          {section === 6 && (
+            <InfoRow
+              label="Policy documents upload"
+              requirement={INTERMEDIARY_FIELD_META[6].policiesUpload.requirement}
+              instruction={INTERMEDIARY_FIELD_META[6].policiesUpload.instruction}
+              condition={INTERMEDIARY_FIELD_META[6].policiesUpload.condition}
+            >
+              <DocumentUploadInput value={intermediaryForm.documentUploads.policies} onChange={(files) => updateIntermediaryUpload("policies", files)} />
+            </InfoRow>
+          )}
+          {section === 7 && (
+            <InfoRow
+              label="Third-party verification document upload"
+              requirement={INTERMEDIARY_FIELD_META[7].thirdPartyVerificationUpload.requirement}
+              instruction={INTERMEDIARY_FIELD_META[7].thirdPartyVerificationUpload.instruction}
+              condition={INTERMEDIARY_FIELD_META[7].thirdPartyVerificationUpload.condition}
+            >
+              <DocumentUploadInput
+                value={intermediaryForm.documentUploads.thirdPartyVerification}
+                onChange={(files) => updateIntermediaryUpload("thirdPartyVerification", files)}
+              />
             </InfoRow>
           )}
         </>
@@ -868,11 +1915,16 @@ function SupplierPortalContent() {
 
       return (
         <>
-          <InfoRow label="5.1 EUDR-relevant commodity/product purchased from upstream suppliers">
+          <InstructionCard {...INTERMEDIARY_SECTION_INSTRUCTIONS[4]} />
+          <InfoRow
+            label="5.1 EUDR-relevant commodity/product purchased from upstream suppliers"
+            requirement={INTERMEDIARY_FIELD_META[4].purchasedMaterials.requirement}
+            instruction={INTERMEDIARY_FIELD_META[4].purchasedMaterials.instruction}
+          >
             <textarea className="form-input" rows={3} value={intermediaryForm.purchasedMaterials} onChange={(e) => updateIntermediaryForm({ purchasedMaterials: e.target.value })} />
           </InfoRow>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ fontSize: "var(--text-sm)", color: "var(--fos-primary)" }}>5.2 Upstream mill / farm / trader entities</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-brand-primary">5.2 Upstream mill / farm / trader entities (Required)</h3>
             <button type="button" className="btn-secondary" onClick={addUpstreamRow}>Add upstream entity</button>
           </div>
           {intermediaryForm.upstreamEntities.map((row, index) => {
@@ -887,11 +1939,20 @@ function SupplierPortalContent() {
             const linkFormType = entityLink?.formType || existingRequest?.formType || "";
             const childStatus = existingChildNode?.status || "NOT_REQUESTED";
 
-            const statusDotColor = childStatus === "COMPLETE" ? "#4ADE80" : childStatus === "SUBMITTED" || childStatus === "IN_PROGRESS" ? "#FACC15" : childStatus === "GAPS_FOUND" ? "#F87171" : hasLink ? "#FB923C" : "#6B7280";
+            const statusDotClass =
+              childStatus === "COMPLETE"
+                ? "bg-state-success"
+                : childStatus === "SUBMITTED" || childStatus === "IN_PROGRESS"
+                  ? "bg-state-warning"
+                  : childStatus === "GAPS_FOUND"
+                    ? "bg-state-error"
+                    : hasLink
+                      ? "bg-brand-accent"
+                      : "bg-text-secondary";
 
             return (
-              <div key={row.id} style={{ padding: "12px", border: "1px solid var(--fos-border)", borderRadius: "var(--radius-md)", display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 w-full" style={{ minWidth: 0 }}>
+              <div key={row.id} className="flex flex-col gap-2.5 rounded-md border border-border-soft p-3">
+                <div className="grid w-full min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-4">
                   <input className="form-input" placeholder="Upstream entity name" value={row.name} onChange={(e) => {
                     const rows = [...intermediaryForm.upstreamEntities];
                     rows[index] = { ...row, name: e.target.value };
@@ -916,65 +1977,77 @@ function SupplierPortalContent() {
                   }} />
                 </div>
                 {/* Per-entity EUDR link generation */}
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", paddingTop: "4px", borderTop: "1px solid rgba(255,255,255,0.04)", flexWrap: "wrap", minWidth: 0 }}>
-                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusDotColor, flexShrink: 0 }} />
+                <div className="flex min-w-0 flex-wrap items-center gap-2.5 border-t border-border-soft pt-1">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass}`} />
                   {hasLink ? (
                     <>
-                      <span style={{ fontSize: "10px", color: "var(--fos-text-secondary)", minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
-                        {linkFormType} form Â· {linkToken}
-                        {existingChildNode ? ` Â· ${childStatus.replace(/_/g, " ")}` : " Â· LINK SENT"}
+                      <span className="min-w-0 break-words text-[10px] text-text-secondary">
+                        {linkFormType} form - {linkToken}
+                        {existingChildNode ? ` - ${childStatus.replace(/_/g, " ")}` : " - LINK SENT"}
                       </span>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => {
-                          const url = entityLink?.url || `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${linkToken}`;
-                          navigator.clipboard.writeText(url);
-                          setNotice(`Link copied: ${url}`);
-                          setTimeout(() => setNotice(null), 3000);
+                       <button
+                         type="button"
+                         onClick={() => {
+                           const url = entityLink?.url || `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${linkToken}`;
+                           navigator.clipboard.writeText(url);
+                           setNotice(`Link copied: ${url}`);
+                           setTimeout(() => setNotice(null), 3000);
                         }}
-                        style={{ padding: "2px 6px", fontSize: "9px", cursor: "pointer" }}
+                        className="btn-secondary px-2 py-1 text-[10px]"
                       >
-                        ðŸ“‹ Copy
+                        Copy link
                       </button>
                     </>
                   ) : (
                     <button
                       type="button"
-                      className="btn-secondary"
                       disabled={!row.name.trim()}
                       onClick={() => handleGenerateEntityLink(row)}
-                      style={{
-                        padding: "4px 10px",
-                        fontSize: "10px",
-                        cursor: row.name.trim() ? "pointer" : "not-allowed",
-                        opacity: row.name.trim() ? 1 : 0.5,
-                      }}
+                      className="btn-secondary px-2.5 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      ðŸ”— Generate {isProducerType(row.entityType) ? "Farmer" : "Intermediary"} EUDR Form Link
+                      Generate {isProducerType(row.entityType) ? "Farmer" : "Intermediary"} EUDR form link
                     </button>
                   )}
                 </div>
               </div>
             );
           })}
-          <InfoRow label="5.3 Trade proof confirmations">
+          <InfoRow
+            label="5.3 Trade proof confirmations"
+            requirement={INTERMEDIARY_FIELD_META[4].tradeProof.requirement}
+            instruction={INTERMEDIARY_FIELD_META[4].tradeProof.instruction}
+          >
             {Object.keys(intermediaryForm.tradeProof).map((key) => (
-                <label key={key} style={{ display: "inline-flex", gap: "6px", marginRight: "12px", fontSize: "var(--text-xs)", maxWidth: "100%", alignItems: "flex-start" }}>
+                <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
                 <input type="checkbox" checked={intermediaryForm.tradeProof[key]} onChange={() => updateIntermediaryForm({ tradeProof: { ...intermediaryForm.tradeProof, [key]: !intermediaryForm.tradeProof[key] } })} />
-                  <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{key}</span>
+                  <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
                 </label>
             ))}
           </InfoRow>
-          <InfoRow label="5.4 Traceability capabilities">
+          <InfoRow
+            label="5.3 Trade proof document upload"
+            requirement={INTERMEDIARY_FIELD_META[4].tradeProofUpload.requirement}
+            instruction={INTERMEDIARY_FIELD_META[4].tradeProofUpload.instruction}
+          >
+            <DocumentUploadInput value={intermediaryForm.documentUploads.tradeProof} onChange={(files) => updateIntermediaryUpload("tradeProof", files)} />
+          </InfoRow>
+          <InfoRow
+            label="5.4 Traceability capabilities"
+            requirement={INTERMEDIARY_FIELD_META[4].traceabilityCapabilities.requirement}
+            instruction={INTERMEDIARY_FIELD_META[4].traceabilityCapabilities.instruction}
+          >
             {Object.keys(intermediaryForm.traceabilityCapabilities).map((key) => (
-                <label key={key} style={{ display: "inline-flex", gap: "6px", marginRight: "12px", fontSize: "var(--text-xs)", maxWidth: "100%", alignItems: "flex-start" }}>
+                <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
                 <input type="checkbox" checked={intermediaryForm.traceabilityCapabilities[key]} onChange={() => updateIntermediaryForm({ traceabilityCapabilities: { ...intermediaryForm.traceabilityCapabilities, [key]: !intermediaryForm.traceabilityCapabilities[key] } })} />
-                  <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>{key}</span>
+                  <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
                 </label>
             ))}
           </InfoRow>
-          <InfoRow label="Describe segregation and traceability controls to prevent mixing">
+          <InfoRow
+            label="Describe segregation and traceability controls to prevent mixing"
+            requirement={INTERMEDIARY_FIELD_META[4].traceabilityControls.requirement}
+            instruction={INTERMEDIARY_FIELD_META[4].traceabilityControls.instruction}
+          >
             <textarea className="form-input" rows={4} value={intermediaryForm.traceabilityControls} onChange={(e) => updateIntermediaryForm({ traceabilityControls: e.target.value })} />
           </InfoRow>
         </>
@@ -982,12 +2055,15 @@ function SupplierPortalContent() {
     }
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ minWidth: 0 }}>
-        <InfoRow label="Authorized Name"><input className="form-input" value={intermediaryForm.signatureName} onChange={(e) => updateIntermediaryForm({ signatureName: e.target.value })} /></InfoRow>
-        <InfoRow label="Designation"><input className="form-input" value={intermediaryForm.designation} onChange={(e) => updateIntermediaryForm({ designation: e.target.value })} /></InfoRow>
-        <InfoRow label="Company"><input className="form-input" value={intermediaryForm.legalName} disabled /></InfoRow>
-        <InfoRow label="Date"><input className="form-input" value={intermediaryForm.declarationDate} onChange={(e) => updateIntermediaryForm({ declarationDate: e.target.value })} /></InfoRow>
-        <div style={{ gridColumn: "1 / -1", color: "var(--fos-text-secondary)", fontSize: "var(--text-sm)", lineHeight: 1.6 }}>
+      <div className="space-y-3">
+        <InstructionCard {...INTERMEDIARY_SECTION_INSTRUCTIONS[8]} />
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
+          <InfoRow label="Authorized Name" requirement={INTERMEDIARY_FIELD_META[8].signatureName.requirement} instruction={INTERMEDIARY_FIELD_META[8].signatureName.instruction}><input className="form-input" value={intermediaryForm.signatureName} onChange={(e) => updateIntermediaryForm({ signatureName: e.target.value })} /></InfoRow>
+          <InfoRow label="Designation" requirement={INTERMEDIARY_FIELD_META[8].designation.requirement} instruction={INTERMEDIARY_FIELD_META[8].designation.instruction}><input className="form-input" value={intermediaryForm.designation} onChange={(e) => updateIntermediaryForm({ designation: e.target.value })} /></InfoRow>
+          <InfoRow label="Company" requirement={INTERMEDIARY_FIELD_META[8].legalName.requirement} instruction={INTERMEDIARY_FIELD_META[8].legalName.instruction}><input className="form-input" value={intermediaryForm.legalName} disabled /></InfoRow>
+          <InfoRow label="Date" requirement={INTERMEDIARY_FIELD_META[8].declarationDate.requirement} instruction={INTERMEDIARY_FIELD_META[8].declarationDate.instruction}><input className="form-input" value={intermediaryForm.declarationDate} onChange={(e) => updateIntermediaryForm({ declarationDate: e.target.value })} /></InfoRow>
+        </div>
+        <div className="text-sm leading-relaxed text-text-secondary">
           The supplier declares that all information, statements and documents are true, complete and accurate, and commits to notify the buyer of material sourcing or legality changes.
         </div>
       </div>
@@ -1202,7 +2278,7 @@ function SupplierPortalContent() {
           )}
           <div className="flex items-center justify-between rounded-md border border-border-soft bg-bg-surface-alt px-3 py-2 text-xs font-semibold text-text-secondary">
             <span>{copy.saveState}</span>
-            <span>{lastSavedAt ? formatLocalDateTime(lastSavedAt) : "â€”"}</span>
+            <span>{lastSavedAt ? formatLocalDateTime(lastSavedAt) : "-"}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-5 pb-4" style={{ borderBottom: "1px solid var(--fos-border)", minWidth: 0 }}>
@@ -1264,7 +2340,7 @@ function SupplierPortalContent() {
                             : "bg-bg-page text-text-secondary",
                       ].join(" ")}
                     >
-                      {isComplete ? "âœ“" : index + 1}
+                      {isComplete ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
                     </span>
                     <span className="line-clamp-2">{stepLabel}</span>
                   </button>
@@ -1332,6 +2408,24 @@ function SupplierPortalContent() {
           </div>
         </section>
       </main>
+
+      {formType === "INTERMEDIARY" && intermediaryForm ? (
+        <LocationPickerModal
+          open={isLocationPickerOpen}
+          initialLat={intermediaryForm.headOfficeLat}
+          initialLng={intermediaryForm.headOfficeLng}
+          initialAddress={intermediaryForm.headOfficeAddress}
+          onClose={() => setIsLocationPickerOpen(false)}
+          onConfirm={({ lat, lng, address }) => {
+            updateIntermediaryForm({
+              headOfficeLat: lat,
+              headOfficeLng: lng,
+              headOfficeAddress: address,
+            });
+            setIsLocationPickerOpen(false);
+          }}
+        />
+      ) : null}
 
       <footer className="mx-auto mb-6 w-full max-w-[1380px] px-4 md:px-8 flex justify-center">
         <DevelopedByFooter className="border-border-soft bg-bg-surface text-text-secondary" />
