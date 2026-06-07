@@ -1,10 +1,33 @@
 import { classifyIngredientEudr } from "@/lib/eudr-classifier";
+import {
+  deriveIngredientRiskTier,
+  getDueDiligenceMode,
+  type DueDiligenceMode,
+  type EuCountryRiskTier,
+} from "@/lib/eu-country-risk";
+import {
+  buildLegalityDossierTemplate,
+  summarizeLegalityDossier,
+  toIngredientLegalityStatus,
+  type IngredientLegalityStatus,
+  type LegalityAuditEvent,
+  type LegalityDossierStatus,
+  type LegalityEvidenceDocumentShape,
+} from "@/lib/legality-dossier";
+import type { DdsPayloadSummary, DdsSubmissionStatus } from "@/lib/traces-simulator";
 
 export type CommodityCode = "COCOA" | "PALM" | "COFFEE" | "SOYA" | "RUBBER" | "WOOD" | "CATTLE" | "NONE";
 
 export interface OrganizationProfile {
   id: string;
   name: string;
+  legalName: string;
+  tradingName: string;
+  country: string;
+  address: string;
+  email: string;
+  phone: string;
+  website: string;
   legalRole: string;
   defaultOutputMode: "COMPLIANCE_PACKAGE" | "DIRECT_DDS";
   primaryMarketFlow: string;
@@ -73,6 +96,8 @@ export interface SupplierDocument {
   fileName: string;
   uploadDate: string;
   size?: string;
+  issuedAt?: string;
+  expiresAt?: string;
 }
 
 export interface IngredientRecord {
@@ -101,6 +126,13 @@ export interface IngredientRecord {
   supplierName?: string;
   certifications?: string;
   certificationsExpiry?: string;
+  documentType?: string;
+  originCountries: string[];
+  primaryOriginCountry: string;
+  euRiskTier: EuCountryRiskTier;
+  dueDiligenceMode: DueDiligenceMode;
+  legalityDossierStatus: IngredientLegalityStatus;
+  ddsStatus: "DRAFT" | "READY_FOR_TRACES" | "TRACES_SUBMITTED";
 }
 
 export interface ProductRecord {
@@ -218,6 +250,7 @@ export interface ConsignmentRecord {
   destination: string;
   operatorAgentId: string;
   shipmentMode: "CURRENT_EXPORT" | "FUTURE_EXPORT";
+  shipmentStatus?: "SHIPPED" | "IN_TRANSIT" | "TO_BE_SHIPPED";
   lineSummary: string[];
   gateStatus: "READY" | "BLOCKED" | "REVIEW_REQUIRED";
   outputEligibility: "PACKAGE_READY" | "HELD" | "SCOPE_REVIEW";
@@ -281,6 +314,8 @@ export interface DocumentRecord {
   linkedEntity: string;
   status: "CURRENT" | "REQUESTED" | "EXPIRED" | "DRAFT";
   note: string;
+  issuedAt?: string;
+  expiresAt?: string;
 }
 
 export interface ConcernRecord {
@@ -458,9 +493,44 @@ export interface EudrEvidenceAttachment {
   status: "REQUESTED" | "ATTACHED" | "MISSING";
 }
 
+export interface DdsSubmissionRecord {
+  id: string;
+  productId: string;
+  ingredientId: string;
+  supplierId: string;
+  status: DdsSubmissionStatus;
+  tracesReferenceCode: string;
+  submittedAt: string;
+  submittedBy: string;
+  submissionMode: "SIMULATED";
+  requestPayloadSummary: DdsPayloadSummary;
+  responseLog: string[];
+}
+
+export interface LegalityEvidenceDocument extends LegalityEvidenceDocumentShape { }
+
+export interface LegalityDossierRecord {
+  id: string;
+  ingredientId: string;
+  productId: string;
+  originCountry: string;
+  euRiskTier: EuCountryRiskTier;
+  dueDiligenceMode: DueDiligenceMode;
+  overallStatus: LegalityDossierStatus;
+  documents: LegalityEvidenceDocument[];
+  auditTrail: LegalityAuditEvent[];
+}
+
 export const organizationProfile: OrganizationProfile = {
   id: "gfi-org-001",
   name: "GFI Pakistan",
+  legalName: "Gujranwala Food Industries",
+  tradingName: "GFI Pakistan",
+  country: "Pakistan",
+  address: "",
+  email: "",
+  phone: "",
+  website: "",
   legalRole: "Non-EU Supplier / Compliance Data Pack Provider",
   defaultOutputMode: "COMPLIANCE_PACKAGE",
   primaryMarketFlow: "GFI -> EU Agent -> EU Retailer",
@@ -507,7 +577,16 @@ export const agents: AgentProfile[] = [
     eoriStatus: "VERIFIED",
     tracesStatus: "VERIFIED",
     readiness: "READY",
-    assignedConsignmentIds: ["con-bubblegum-001"],
+    assignedConsignmentIds: [
+      "con-bubblegum-001",
+      "con-gum-004",
+      "con-candy-005",
+      "con-jelly-006",
+      "con-bubblegum-007",
+      "con-candy-008",
+      "con-jelly-009",
+      "con-gum-010",
+    ],
     notes: [
       "Primary EU operator agent for current low-complexity exports.",
       "Can receive compliance package immediately for out-of-scope or clean handoff flows.",
@@ -521,7 +600,18 @@ export const agents: AgentProfile[] = [
     eoriStatus: "VERIFIED",
     tracesStatus: "PENDING",
     readiness: "FOLLOW_UP_REQUIRED",
-    assignedConsignmentIds: ["con-chew-002", "con-choc-003"],
+    assignedConsignmentIds: [
+      "con-chew-002",
+      "con-choc-003",
+      "con-chew-011",
+      "con-wafers-012",
+      "con-chew-013",
+      "con-chew-014",
+      "con-wafers-015",
+      "con-choc-016",
+      "con-choc-017",
+      "con-choc-018",
+    ],
     notes: [
       "Agent readiness still depends on TRACES onboarding confirmation.",
       "Cannot accept final cocoa package while provenance blockers remain unresolved.",
@@ -565,7 +655,9 @@ export const suppliers: SupplierRecord[] = [
         type: "Agreement",
         fileName: "sumatra_palm_supply_agreement_2026.pdf",
         uploadDate: "2026-01-10",
-        size: "1.2 MB"
+        size: "1.2 MB",
+        issuedAt: "2026-01-10",
+        expiresAt: "2026-12-31",
       },
       {
         id: "doc-cargill-2",
@@ -573,7 +665,9 @@ export const suppliers: SupplierRecord[] = [
         type: "Declaration",
         fileName: "deforestation_free_self_declaration.pdf",
         uploadDate: "2026-02-15",
-        size: "450 KB"
+        size: "450 KB",
+        issuedAt: "2026-02-15",
+        expiresAt: "2026-08-01",
       },
       {
         id: "doc-cargill-3",
@@ -581,7 +675,9 @@ export const suppliers: SupplierRecord[] = [
         type: "Certificate",
         fileName: "rspo_coc_certificate_my0089.pdf",
         uploadDate: "2026-03-01",
-        size: "820 KB"
+        size: "820 KB",
+        issuedAt: "2026-01-12",
+        expiresAt: "2028-01-12",
       },
       {
         id: "doc-cargill-4",
@@ -589,7 +685,9 @@ export const suppliers: SupplierRecord[] = [
         type: "License",
         fileName: "refining_export_license_2026.pdf",
         uploadDate: "2025-11-20",
-        size: "1.8 MB"
+        size: "1.8 MB",
+        issuedAt: "2025-11-20",
+        expiresAt: "2026-07-20",
       },
       {
         id: "doc-cargill-5",
@@ -597,7 +695,9 @@ export const suppliers: SupplierRecord[] = [
         type: "Audit Record",
         fileName: "traceability_verification_audit_q4.pdf",
         uploadDate: "2026-01-05",
-        size: "2.4 MB"
+        size: "2.4 MB",
+        issuedAt: "2026-01-05",
+        expiresAt: "2026-10-05",
       }
     ],
   },
@@ -637,7 +737,9 @@ export const suppliers: SupplierRecord[] = [
         type: "Agreement",
         fileName: "cocoa_processing_agreement_2026.pdf",
         uploadDate: "2026-01-15",
-        size: "950 KB"
+        size: "950 KB",
+        issuedAt: "2026-01-15",
+        expiresAt: "2026-12-31",
       },
       {
         id: "doc-jb-2",
@@ -645,7 +747,9 @@ export const suppliers: SupplierRecord[] = [
         type: "Audit Record",
         fileName: "traceability_framework_assessment_2025.pdf",
         uploadDate: "2025-12-10",
-        size: "3.1 MB"
+        size: "3.1 MB",
+        issuedAt: "2025-12-10",
+        expiresAt: "2026-07-15",
       }
     ],
   },
@@ -964,6 +1068,12 @@ function toIngredient(
     cocModel?: string;
     supplierName?: string;
     certifications?: string;
+    originCountries?: string[];
+    primaryOriginCountry?: string;
+    euRiskTier?: EuCountryRiskTier;
+    dueDiligenceMode?: DueDiligenceMode;
+    legalityDossierStatus?: IngredientLegalityStatus;
+    ddsStatus?: IngredientRecord["ddsStatus"];
   },
 ): IngredientRecord {
   // Baseline source: docs/GFI Products-Ingredients Evaluation/GFI Products Form.md
@@ -997,6 +1107,12 @@ function toIngredient(
     cocModel: options?.cocModel ?? "Not Applicable",
     supplierName: options?.supplierName ?? "No supplier linkage",
     certifications: options?.certifications ?? "Not Applicable",
+    originCountries: options?.originCountries ?? [],
+    primaryOriginCountry: options?.primaryOriginCountry ?? "",
+    euRiskTier: options?.euRiskTier ?? "UNKNOWN",
+    dueDiligenceMode: options?.dueDiligenceMode ?? "STANDARD",
+    legalityDossierStatus: options?.legalityDossierStatus ?? "MISSING",
+    ddsStatus: options?.ddsStatus ?? "DRAFT",
   };
 }
 
@@ -1047,9 +1163,8 @@ export const products: ProductRecord[] = [
           readiness: "REVIEW_REQUIRED",
           evidenceStatus: "COMPLETE",
           blockingReason:
-            "Ingredient traceability is complete, but final readiness still depends on customs scope review for the palm route.",
+            "Ingredient traceability is complete, but legality and plot evidence must remain current before filing.",
           supplyChainStatus: "COMPLETE",
-          forceReview: true,
           scientificName: "Palmitic Acid",
           cocModel: "SG",
           supplierName: "Cargill",
@@ -1265,9 +1380,8 @@ export const products: ProductRecord[] = [
         supplierIds: ["sup-cargill"],
         readiness: "REVIEW_REQUIRED",
         evidenceStatus: "PARTIAL",
-        blockingReason: "Palm remains secondary to the cocoa blocker but still requires scope confirmation.",
+        blockingReason: "Palm remains secondary to the cocoa blocker, but its own provenance evidence is still active and in scope.",
         supplyChainStatus: "IN_PROGRESS",
-        forceReview: true,
         scientificName: "Palmitic Acid",
         cocModel: "SG",
         supplierName: "Cargill",
@@ -1361,9 +1475,8 @@ export const products: ProductRecord[] = [
         supplierIds: ["sup-cargill"],
         readiness: "REVIEW_REQUIRED",
         evidenceStatus: "PARTIAL",
-        blockingReason: "Scope review must be concluded before EU readiness can move forward.",
+        blockingReason: "Palm provenance evidence is still being completed before EU readiness can move forward.",
         supplyChainStatus: "IN_PROGRESS",
-        forceReview: true,
         scientificName: "Palmitic Acid",
         cocModel: "SG",
         supplierName: "Cargill",
@@ -2130,7 +2243,1218 @@ export const consignments: ConsignmentRecord[] = [
         totalGrossWtKg: 6652.8,
       },
     ],
-   },
+  },
+  {
+    id: "con-gum-004",
+    reference: "GFI-EU-GUM-2026-004",
+    destination: "Antwerp, Belgium",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Bubble Gum / HS 170410 / scope memo attached"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "This release-ready bubble gum route uses the established out-of-scope memo package and current dispatch evidence set.",
+    issues: [],
+    nextAction: "Release package to operator agent with scope memo and dispatch evidence set.",
+    saleOrderNo: "2005110",
+    dispatchDate: "15-04-2026",
+    invoiceNo: "5241",
+    customerRefNo: "09",
+    pfaNo: "6441",
+    country: "Belgium",
+    containerNo: "CMAU-551204-2",
+    containerSize: "20ft",
+    cbm: 31,
+    weightLimitKg: 11800,
+    grossWeightTons: 11.3616,
+    sealNo: "008112+008113",
+    truckNo: "KHI-204",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "9 pallets; release-ready under current scope memo.",
+    placeOfLoading: "STATE TWO",
+    loadingTime: "09:15:00",
+    totalCartons: 1580,
+    totalDipsCartons: 1508,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Noman Afzal",
+    countBy: "Imran",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "5172",
+        productName: "Bubble Gum Sour Belts",
+        packingDesc: "20gx24pcsx12box",
+        section: "Bubble",
+        totalCartons: 780,
+        dipsCartons: 744,
+        lotNo: "25042BGSB20",
+        mfgDate: "04-04-2026",
+        expDate: "04-04-2028",
+        grossWtKg: 7.92,
+        totalGrossWtKg: 6177.6,
+      },
+      {
+        sr: 2,
+        finalCode: "2158",
+        productName: "Gum Fries Bubble Gum",
+        packingDesc: "15gx24pcsx12box",
+        section: "Bubble",
+        totalCartons: 800,
+        dipsCartons: 764,
+        lotNo: "25042GFB15",
+        mfgDate: "04-04-2026",
+        expDate: "04-04-2028",
+        grossWtKg: 6.48,
+        totalGrossWtKg: 5184,
+      },
+    ],
+  },
+  {
+    id: "con-candy-005",
+    reference: "GFI-EU-CND-2026-005",
+    destination: "Bremerhaven, Germany",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Hard boiled candy / HS 170490 / non-EUDR route complete"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Current export candy route is supported by non-EUDR formulation evidence and a complete dispatch package.",
+    issues: [],
+    nextAction: "Release package to operator agent and close shipment gate review.",
+    saleOrderNo: "2005111",
+    dispatchDate: "16-04-2026",
+    invoiceNo: "5242",
+    customerRefNo: "11",
+    pfaNo: "6442",
+    country: "Germany",
+    containerNo: "OOLU-726441-1",
+    containerSize: "20ft",
+    cbm: 29,
+    weightLimitKg: 11200,
+    grossWeightTons: 10.182,
+    sealNo: "008201+008202",
+    truckNo: "KHI-219",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Mixed candy pallet load; no upstream blocker remains.",
+    placeOfLoading: "STATE ONE",
+    loadingTime: "11:20:00",
+    totalCartons: 1320,
+    totalDipsCartons: 1270,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Noman Afzal",
+    countBy: "Bilal Ahmed",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "6104",
+        productName: "Hard Boiled Candy Assorted",
+        packingDesc: "18gx24pcsx12box",
+        section: "Candy",
+        totalCartons: 720,
+        dipsCartons: 690,
+        lotNo: "25043HBCA18",
+        mfgDate: "05-04-2026",
+        expDate: "05-04-2028",
+        grossWtKg: 7.1,
+        totalGrossWtKg: 5112,
+      },
+      {
+        sr: 2,
+        finalCode: "6117",
+        productName: "Center Filled Candy Mix",
+        packingDesc: "22gx24pcsx12box",
+        section: "Candy",
+        totalCartons: 600,
+        dipsCartons: 580,
+        lotNo: "25043CFCM22",
+        mfgDate: "05-04-2026",
+        expDate: "05-04-2028",
+        grossWtKg: 8.45,
+        totalGrossWtKg: 5070,
+      },
+    ],
+  },
+  {
+    id: "con-jelly-006",
+    reference: "GFI-EU-JLY-2026-006",
+    destination: "Southampton, United Kingdom",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Jelly confectionery / HS 170490 / supporting classification evidence complete"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "This jelly export route is release-ready with current trade, dispatch, and scope-supporting evidence attached.",
+    issues: [],
+    nextAction: "Release package to operator agent and lock shipment dossier.",
+    saleOrderNo: "2005112",
+    dispatchDate: "16-04-2026",
+    invoiceNo: "5243",
+    customerRefNo: "12",
+    pfaNo: "6443",
+    country: "United Kingdom",
+    containerNo: "MSCU-802114-3",
+    containerSize: "20ft",
+    cbm: 30,
+    weightLimitKg: 11450,
+    grossWeightTons: 10.6801,
+    sealNo: "008211+008212",
+    truckNo: "KHI-225",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Cold-chain not required; visual seal check completed.",
+    placeOfLoading: "STATE ONE",
+    loadingTime: "12:05:00",
+    totalCartons: 1490,
+    totalDipsCartons: 1445,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Tahir Hussain",
+    countBy: "Imran",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "6208",
+        productName: "Jelly Fruities Mix",
+        packingDesc: "18gx24pcsx12box",
+        section: "Jelly",
+        totalCartons: 760,
+        dipsCartons: 742,
+        lotNo: "25044JFM18",
+        mfgDate: "06-04-2026",
+        expDate: "06-04-2028",
+        grossWtKg: 6.82,
+        totalGrossWtKg: 5183.2,
+      },
+      {
+        sr: 2,
+        finalCode: "6215",
+        productName: "Jelly Cola Bottles",
+        packingDesc: "20gx24pcsx12box",
+        section: "Jelly",
+        totalCartons: 730,
+        dipsCartons: 703,
+        lotNo: "25044JCB20",
+        mfgDate: "06-04-2026",
+        expDate: "06-04-2028",
+        grossWtKg: 7.53,
+        totalGrossWtKg: 5496.9,
+      },
+    ],
+  },
+  {
+    id: "con-bubblegum-007",
+    reference: "GFI-EU-BBL-2026-007",
+    destination: "Barcelona, Spain",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Bubble gum / HS 170410 / memo and dispatch evidence complete"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "This current export route remains low-complexity and fully supported by scope memo, trade, and shipment records.",
+    issues: [],
+    nextAction: "Release package to operator agent with final scope memo attached.",
+    saleOrderNo: "2005113",
+    dispatchDate: "17-04-2026",
+    invoiceNo: "5244",
+    customerRefNo: "14",
+    pfaNo: "6444",
+    country: "Spain",
+    containerNo: "TGHU-401882-0",
+    containerSize: "20ft",
+    cbm: 30,
+    weightLimitKg: 11000,
+    grossWeightTons: 10.5336,
+    sealNo: "008301+008302",
+    truckNo: "KHI-231",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "10 pallet route with final carton branding confirmation.",
+    placeOfLoading: "STATE TWO",
+    loadingTime: "09:40:00",
+    totalCartons: 1410,
+    totalDipsCartons: 1366,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Noman Afzal",
+    countBy: "Bilal Ahmed",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "5172",
+        productName: "Bubble Gum Sour Belts",
+        packingDesc: "20gx24pcsx12box",
+        section: "Bubble",
+        totalCartons: 690,
+        dipsCartons: 672,
+        lotNo: "25045BGSB20",
+        mfgDate: "07-04-2026",
+        expDate: "07-04-2028",
+        grossWtKg: 7.92,
+        totalGrossWtKg: 5464.8,
+      },
+      {
+        sr: 2,
+        finalCode: "3147",
+        productName: "Buster Tangy Candy Mix",
+        packingDesc: "16gx24pcsx12box",
+        section: "Candy",
+        totalCartons: 720,
+        dipsCartons: 694,
+        lotNo: "25045BTCM16",
+        mfgDate: "07-04-2026",
+        expDate: "07-04-2028",
+        grossWtKg: 7.04,
+        totalGrossWtKg: 5068.8,
+      },
+    ],
+  },
+  {
+    id: "con-candy-008",
+    reference: "GFI-EU-CND-2026-008",
+    destination: "Valencia, Spain",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Candy and jelly mix / HS 170490 / classification evidence complete"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Current export route is ready for release under the confectionery classification and dispatch-control package.",
+    issues: [],
+    nextAction: "Release package to operator agent and move to dispatch handoff.",
+    saleOrderNo: "2005114",
+    dispatchDate: "18-04-2026",
+    invoiceNo: "5245",
+    customerRefNo: "15",
+    pfaNo: "6445",
+    country: "Spain",
+    containerNo: "TEMU-772034-5",
+    containerSize: "40ft",
+    cbm: 61,
+    weightLimitKg: 22300,
+    grossWeightTons: 11.6246,
+    sealNo: "008322+008323",
+    truckNo: "KHI-236",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Mixed confectionery load cleared after final weight reconciliation.",
+    placeOfLoading: "STATE ONE",
+    loadingTime: "14:10:00",
+    totalCartons: 1670,
+    totalDipsCartons: 1613,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Tahir Hussain",
+    countBy: "Imran",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "6104",
+        productName: "Hard Boiled Candy Assorted",
+        packingDesc: "18gx24pcsx12box",
+        section: "Candy",
+        totalCartons: 840,
+        dipsCartons: 811,
+        lotNo: "25046HBCA18",
+        mfgDate: "08-04-2026",
+        expDate: "08-04-2028",
+        grossWtKg: 7.1,
+        totalGrossWtKg: 5964,
+      },
+      {
+        sr: 2,
+        finalCode: "6208",
+        productName: "Jelly Fruities Mix",
+        packingDesc: "18gx24pcsx12box",
+        section: "Jelly",
+        totalCartons: 830,
+        dipsCartons: 802,
+        lotNo: "25046JFM18",
+        mfgDate: "08-04-2026",
+        expDate: "08-04-2028",
+        grossWtKg: 6.82,
+        totalGrossWtKg: 5660.6,
+      },
+    ],
+  },
+  {
+    id: "con-jelly-009",
+    reference: "GFI-EU-JLY-2026-009",
+    destination: "Dunkirk, France",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Jelly and gum mix / HS 170490 / package ready"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "This current export route has cleared evidence checks and is ready for operator handoff.",
+    issues: [],
+    nextAction: "Release package to operator agent and confirm vessel booking.",
+    saleOrderNo: "2005115",
+    dispatchDate: "18-04-2026",
+    invoiceNo: "5246",
+    customerRefNo: "16",
+    pfaNo: "6446",
+    country: "France",
+    containerNo: "OOLU-783112-9",
+    containerSize: "20ft",
+    cbm: 28,
+    weightLimitKg: 10250,
+    grossWeightTons: 9.6564,
+    sealNo: "008331+008332",
+    truckNo: "KHI-239",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Compact release-ready route with mixed jelly and gum SKU set.",
+    placeOfLoading: "STATE ONE",
+    loadingTime: "15:25:00",
+    totalCartons: 1380,
+    totalDipsCartons: 1325,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Noman Afzal",
+    countBy: "Bilal Ahmed",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "6215",
+        productName: "Jelly Cola Bottles",
+        packingDesc: "20gx24pcsx12box",
+        section: "Jelly",
+        totalCartons: 680,
+        dipsCartons: 652,
+        lotNo: "25047JCB20",
+        mfgDate: "09-04-2026",
+        expDate: "09-04-2028",
+        grossWtKg: 7.53,
+        totalGrossWtKg: 5120.4,
+      },
+      {
+        sr: 2,
+        finalCode: "2158",
+        productName: "Gum Fries Bubble Gum",
+        packingDesc: "15gx24pcsx12box",
+        section: "Bubble",
+        totalCartons: 700,
+        dipsCartons: 673,
+        lotNo: "25047GFB15",
+        mfgDate: "09-04-2026",
+        expDate: "09-04-2028",
+        grossWtKg: 6.48,
+        totalGrossWtKg: 4536,
+      },
+    ],
+  },
+  {
+    id: "con-gum-010",
+    reference: "GFI-EU-GUM-2026-010",
+    destination: "Zeebrugge, Belgium",
+    operatorAgentId: "agent-fos-eu",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Bubble and chew confectionery / HS 170410 / release-ready"],
+    gateStatus: "READY",
+    outputEligibility: "PACKAGE_READY",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Current export route remains operationally straightforward and is supported by a complete scope-supporting package.",
+    issues: [],
+    nextAction: "Release package to operator agent and archive shipment gate decision.",
+    saleOrderNo: "2005116",
+    dispatchDate: "19-04-2026",
+    invoiceNo: "5247",
+    customerRefNo: "18",
+    pfaNo: "6447",
+    country: "Belgium",
+    containerNo: "GESU-447821-6",
+    containerSize: "20ft",
+    cbm: 32,
+    weightLimitKg: 11600,
+    grossWeightTons: 11.0352,
+    sealNo: "008341+008342",
+    truckNo: "KHI-244",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Customer release note received and attached to dispatch file.",
+    placeOfLoading: "STATE TWO",
+    loadingTime: "08:50:00",
+    totalCartons: 1520,
+    totalDipsCartons: 1462,
+    checkedByExport: "Hadi & Waqas",
+    qualityInspector: "Tahir Hussain",
+    countBy: "Imran",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "5172",
+        productName: "Bubble Gum Sour Belts",
+        packingDesc: "20gx24pcsx12box",
+        section: "Bubble",
+        totalCartons: 760,
+        dipsCartons: 734,
+        lotNo: "25048BGSB20",
+        mfgDate: "10-04-2026",
+        expDate: "10-04-2028",
+        grossWtKg: 7.92,
+        totalGrossWtKg: 6019.2,
+      },
+      {
+        sr: 2,
+        finalCode: "4829",
+        productName: "Fruties Tape Chew Assorted New",
+        packingDesc: "15gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 760,
+        dipsCartons: 728,
+        lotNo: "25048FTCA15",
+        mfgDate: "10-04-2026",
+        expDate: "10-04-2028",
+        grossWtKg: 6.6,
+        totalGrossWtKg: 5016,
+      },
+    ],
+  },
+  {
+    id: "con-chew-011",
+    reference: "GFI-EU-CHEW-2026-011",
+    destination: "Felixstowe, United Kingdom",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Chew / HS 170490 / palm ingredient path complete, final scope memo pending"],
+    gateStatus: "REVIEW_REQUIRED",
+    outputEligibility: "SCOPE_REVIEW",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Chew route is fully traceable, but package release remains on hold until the palm scope memo is finalized and agent release is reconfirmed.",
+    issues: [
+      {
+        code: "PALM_SCOPE_REVIEW",
+        severity: "HIGH",
+        sourceDomain: "products",
+        blocking: true,
+        message: "Palm ingredient remains under classification review for this consignment path.",
+      },
+      {
+        code: "EXPORT_RECHECK",
+        severity: "WARNING",
+        sourceDomain: "outputs",
+        blocking: false,
+        message: "Export team must recheck the release note once the scope memo is approved.",
+      },
+    ],
+    nextAction: "Hold package release until palm scope memo is approved and agent readiness is reconfirmed.",
+    saleOrderNo: "2005117",
+    dispatchDate: "20-04-2026",
+    invoiceNo: "5248",
+    customerRefNo: "19",
+    pfaNo: "6448",
+    country: "United Kingdom",
+    containerNo: "MRSU-190822-8",
+    containerSize: "40ft",
+    cbm: 65,
+    weightLimitKg: 21800,
+    grossWeightTons: 17.0812,
+    sealNo: "008411+008412",
+    truckNo: "LHR-452",
+    masterCaseColor: "BROWN",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Awaiting final scope sign-off before release instruction is sent.",
+    placeOfLoading: "DOCK A2",
+    loadingTime: "10:05:00",
+    totalCartons: 1760,
+    totalDipsCartons: 1738,
+    checkedByExport: "Sana Malik",
+    qualityInspector: "Tahir Hussain",
+    countBy: "Bilal Ahmed",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "3031",
+        productName: "Stripple Taffy Rope",
+        packingDesc: "25gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 620,
+        dipsCartons: 612,
+        lotNo: "26011STR25",
+        mfgDate: "11-04-2026",
+        expDate: "11-04-2028",
+        grossWtKg: 9.2,
+        totalGrossWtKg: 5704,
+      },
+      {
+        sr: 2,
+        finalCode: "4666",
+        productName: "Whacky Chew Bar Twin Assorted",
+        packingDesc: "28gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 1140,
+        dipsCartons: 1126,
+        lotNo: "26011WCBT28",
+        mfgDate: "11-04-2026",
+        expDate: "11-04-2028",
+        grossWtKg: 9.98,
+        totalGrossWtKg: 11377.2,
+      },
+    ],
+  },
+  {
+    id: "con-wafers-012",
+    reference: "GFI-EU-WAF-2026-012",
+    destination: "Marseille, France",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Wafers / HS 190532 / palm-derived ingredient route still under compliance review"],
+    gateStatus: "REVIEW_REQUIRED",
+    outputEligibility: "SCOPE_REVIEW",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Wafer route is operationally ready but cannot be handed over while the palm-derived ingredient decision remains open.",
+    issues: [
+      {
+        code: "PALM_SCOPE_REVIEW",
+        severity: "HIGH",
+        sourceDomain: "products",
+        blocking: true,
+        message: "Palm-derived ingredient for wafers remains under classification review.",
+      },
+      {
+        code: "AGENT_RELEASE_NOTE_PENDING",
+        severity: "WARNING",
+        sourceDomain: "agents",
+        blocking: false,
+        message: "Agent release note must be refreshed after the final palm determination.",
+      },
+    ],
+    nextAction: "Hold package release until palm scope review closes and release note is refreshed.",
+    saleOrderNo: "2005118",
+    dispatchDate: "20-04-2026",
+    invoiceNo: "5249",
+    customerRefNo: "20",
+    pfaNo: "6449",
+    country: "France",
+    containerNo: "TCKU-529014-7",
+    containerSize: "40ft",
+    cbm: 59,
+    weightLimitKg: 20500,
+    grossWeightTons: 11.842,
+    sealNo: "008421+008422",
+    truckNo: "LHR-457",
+    masterCaseColor: "BROWN",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Release path paused after latest ingredient scope review note.",
+    placeOfLoading: "DOCK B1",
+    loadingTime: "13:10:00",
+    totalCartons: 1420,
+    totalDipsCartons: 1402,
+    checkedByExport: "Sana Malik",
+    qualityInspector: "Tahir Hussain",
+    countBy: "Bilal Ahmed",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "7301",
+        productName: "Wafer Cream Bites",
+        packingDesc: "22gx24pcsx12box",
+        section: "Wafers",
+        totalCartons: 740,
+        dipsCartons: 730,
+        lotNo: "26012WCB22",
+        mfgDate: "12-04-2026",
+        expDate: "12-04-2028",
+        grossWtKg: 8.1,
+        totalGrossWtKg: 5994,
+      },
+      {
+        sr: 2,
+        finalCode: "7314",
+        productName: "Wafer Fingers Assorted",
+        packingDesc: "24gx24pcsx12box",
+        section: "Wafers",
+        totalCartons: 680,
+        dipsCartons: 672,
+        lotNo: "26012WFA24",
+        mfgDate: "12-04-2026",
+        expDate: "12-04-2028",
+        grossWtKg: 8.6,
+        totalGrossWtKg: 5848,
+      },
+    ],
+  },
+  {
+    id: "con-chew-013",
+    reference: "GFI-EU-CHEW-2026-013",
+    destination: "Genoa, Italy",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "CURRENT_EXPORT",
+    lineSummary: ["Chew / HS 170490 / palm scope note and export review still open"],
+    gateStatus: "REVIEW_REQUIRED",
+    outputEligibility: "SCOPE_REVIEW",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "The chew route remains fully traceable, but package release is paused pending final palm scope approval and export desk confirmation.",
+    issues: [
+      {
+        code: "PALM_SCOPE_REVIEW",
+        severity: "HIGH",
+        sourceDomain: "products",
+        blocking: true,
+        message: "Palm scope memo is still pending approval for this chew route.",
+      },
+      {
+        code: "EXPORT_RECHECK",
+        severity: "WARNING",
+        sourceDomain: "outputs",
+        blocking: false,
+        message: "Export desk must confirm release once the scope file is superseded.",
+      },
+    ],
+    nextAction: "Retain held package until final palm determination is documented and export desk reconfirms release.",
+    saleOrderNo: "2005119",
+    dispatchDate: "21-04-2026",
+    invoiceNo: "5250",
+    customerRefNo: "22",
+    pfaNo: "6450",
+    country: "Italy",
+    containerNo: "FSCU-661295-1",
+    containerSize: "40ft",
+    cbm: 61,
+    weightLimitKg: 21200,
+    grossWeightTons: 13.0934,
+    sealNo: "008431+008432",
+    truckNo: "LHR-461",
+    masterCaseColor: "BROWN",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: true,
+    fitForLoading: true,
+    specialRemarks: "Held at final review state; all traceability records reconciled.",
+    placeOfLoading: "DOCK A3",
+    loadingTime: "15:10:00",
+    totalCartons: 1610,
+    totalDipsCartons: 1587,
+    checkedByExport: "Sana Malik",
+    qualityInspector: "Noman Afzal",
+    countBy: "Bilal Ahmed",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "4829",
+        productName: "Fruties Tape Chew Assorted New",
+        packingDesc: "15gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 880,
+        dipsCartons: 866,
+        lotNo: "26013FTCA15",
+        mfgDate: "13-04-2026",
+        expDate: "13-04-2028",
+        grossWtKg: 6.6,
+        totalGrossWtKg: 5808,
+      },
+      {
+        sr: 2,
+        finalCode: "4666",
+        productName: "Whacky Chew Bar Twin Assorted",
+        packingDesc: "28gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 730,
+        dipsCartons: 721,
+        lotNo: "26013WCBT28",
+        mfgDate: "13-04-2026",
+        expDate: "13-04-2028",
+        grossWtKg: 9.98,
+        totalGrossWtKg: 7285.4,
+      },
+    ],
+  },
+  {
+    id: "con-chew-014",
+    reference: "GFI-EU-CHEW-2026-014",
+    destination: "Livorno, Italy",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "FUTURE_EXPORT",
+    lineSummary: ["Chew / HS 170490 / future export slot pending palm scope closure"],
+    gateStatus: "REVIEW_REQUIRED",
+    outputEligibility: "SCOPE_REVIEW",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Future chew export is pre-positioned with batch and dispatch data, but release remains suspended until palm scope closure and export-slot confirmation.",
+    issues: [
+      {
+        code: "PALM_SCOPE_REVIEW",
+        severity: "HIGH",
+        sourceDomain: "products",
+        blocking: true,
+        message: "Palm classification decision is still open for this future chew route.",
+      },
+      {
+        code: "PLANNING_SLOT_PENDING",
+        severity: "WARNING",
+        sourceDomain: "consignments",
+        blocking: false,
+        message: "Route remains on planning hold until scope closure and booking confirmation.",
+      },
+    ],
+    nextAction: "Keep package held and reopen release only after palm memo closure and booking confirmation.",
+    saleOrderNo: "2005120",
+    dispatchDate: "—",
+    invoiceNo: "5251",
+    customerRefNo: "23",
+    pfaNo: "6451",
+    country: "Italy",
+    containerNo: "PENDING",
+    containerSize: "40ft",
+    cbm: 60,
+    weightLimitKg: 21400,
+    grossWeightTons: 13.829,
+    sealNo: "—",
+    truckNo: "—",
+    masterCaseColor: "BROWN",
+    logoOnCarton: "GFI",
+    tapeOnCarton: "GFI",
+    cleanedBeforeLoading: false,
+    fitForLoading: false,
+    notFitReason: "Future export route is waiting for scope closure before final loading instructions are issued.",
+    specialRemarks: "Do not dispatch until scope decision and vessel slot are confirmed.",
+    placeOfLoading: "TBD",
+    loadingTime: "—",
+    totalCartons: 1600,
+    totalDipsCartons: 1583,
+    checkedByExport: "—",
+    qualityInspector: "—",
+    countBy: "—",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "3031",
+        productName: "Stripple Taffy Rope",
+        packingDesc: "25gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 790,
+        dipsCartons: 781,
+        lotNo: "26014STR25",
+        mfgDate: "14-04-2026",
+        expDate: "14-04-2028",
+        grossWtKg: 9.2,
+        totalGrossWtKg: 7268,
+      },
+      {
+        sr: 2,
+        finalCode: "7301",
+        productName: "Wafer Cream Bites",
+        packingDesc: "22gx24pcsx12box",
+        section: "Wafers",
+        totalCartons: 810,
+        dipsCartons: 802,
+        lotNo: "26014WCB22",
+        mfgDate: "14-04-2026",
+        expDate: "14-04-2028",
+        grossWtKg: 8.1,
+        totalGrossWtKg: 6561,
+      },
+    ],
+  },
+  {
+    id: "con-wafers-015",
+    reference: "GFI-EU-WAF-2026-015",
+    destination: "Ravenna, Italy",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "FUTURE_EXPORT",
+    lineSummary: ["Wafers / HS 190532 / future export path held in palm review state"],
+    gateStatus: "REVIEW_REQUIRED",
+    outputEligibility: "SCOPE_REVIEW",
+    traceabilityStatus: "TRACEABLE",
+    policyNarrative:
+      "Future wafer route is staged with inventory and dispatch references, but it remains in review until the palm-derived ingredient posture is settled.",
+    issues: [
+      {
+        code: "PALM_SCOPE_REVIEW",
+        severity: "HIGH",
+        sourceDomain: "products",
+        blocking: true,
+        message: "Palm-derived wafer ingredient remains under review for future export release.",
+      },
+      {
+        code: "PLANNING_HOLD",
+        severity: "WARNING",
+        sourceDomain: "consignments",
+        blocking: false,
+        message: "Future export remains on planning hold pending scope confirmation.",
+      },
+    ],
+    nextAction: "Retain held package and revisit route once palm classification outcome is confirmed.",
+    saleOrderNo: "2005121",
+    dispatchDate: "—",
+    invoiceNo: "5252",
+    customerRefNo: "24",
+    pfaNo: "6452",
+    country: "Italy",
+    containerNo: "PENDING",
+    containerSize: "40ft HC",
+    cbm: 58,
+    weightLimitKg: 20900,
+    grossWeightTons: 11.832,
+    sealNo: "—",
+    truckNo: "—",
+    masterCaseColor: "BROWN",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: false,
+    fitForLoading: false,
+    notFitReason: "Future wafer route cannot be finalized before palm scope closure.",
+    specialRemarks: "Planning-only route; no dispatch release permitted yet.",
+    placeOfLoading: "TBD",
+    loadingTime: "—",
+    totalCartons: 1520,
+    totalDipsCartons: 1500,
+    checkedByExport: "—",
+    qualityInspector: "—",
+    countBy: "—",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "7314",
+        productName: "Wafer Fingers Assorted",
+        packingDesc: "24gx24pcsx12box",
+        section: "Wafers",
+        totalCartons: 900,
+        dipsCartons: 886,
+        lotNo: "26015WFA24",
+        mfgDate: "15-04-2026",
+        expDate: "15-04-2028",
+        grossWtKg: 8.6,
+        totalGrossWtKg: 7740,
+      },
+      {
+        sr: 2,
+        finalCode: "4829",
+        productName: "Fruties Tape Chew Assorted New",
+        packingDesc: "15gx24pcsx12box",
+        section: "Chew",
+        totalCartons: 620,
+        dipsCartons: 614,
+        lotNo: "26015FTCA15",
+        mfgDate: "15-04-2026",
+        expDate: "15-04-2028",
+        grossWtKg: 6.6,
+        totalGrossWtKg: 4092,
+      },
+    ],
+  },
+  {
+    id: "con-choc-016",
+    reference: "GFI-EU-CHOC-2026-016",
+    destination: "Trieste, Italy",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "FUTURE_EXPORT",
+    lineSummary: ["Chocolate / HS 180690 / cocoa origin and CoC path unresolved"],
+    gateStatus: "BLOCKED",
+    outputEligibility: "HELD",
+    traceabilityStatus: "BLOCKED",
+    policyNarrative:
+      "Future chocolate export remains fail-closed because cocoa provenance and transaction-level CoC evidence are still incomplete.",
+    issues: [
+      {
+        code: "COCOA_GEO_MISSING",
+        severity: "CRITICAL",
+        sourceDomain: "geolocation",
+        blocking: true,
+        message: "No approved cocoa farm geolocation package exists for the selected route.",
+      },
+      {
+        code: "COCOA_COC_MISSING",
+        severity: "HIGH",
+        sourceDomain: "documents",
+        blocking: true,
+        message: "No transaction-level cocoa chain-of-custody evidence has been linked to this route.",
+      },
+      {
+        code: "SUPPLIER_RESPONSE_OPEN",
+        severity: "CRITICAL",
+        sourceDomain: "suppliers",
+        blocking: true,
+        message: "Supplier remediation remains incomplete for cocoa provenance onboarding.",
+      },
+    ],
+    nextAction: "Keep shipment blocked and continue cocoa supplier remediation before any release planning.",
+    saleOrderNo: "2005122",
+    dispatchDate: "—",
+    invoiceNo: "5253",
+    customerRefNo: "25",
+    pfaNo: "6453",
+    country: "Italy",
+    containerNo: "PENDING",
+    containerSize: "40ft HC",
+    cbm: 62,
+    weightLimitKg: 26500,
+    grossWeightTons: 18.5184,
+    sealNo: "—",
+    truckNo: "—",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: false,
+    fitForLoading: false,
+    notFitReason: "Blocked pending upstream cocoa origin and CoC resolution.",
+    specialRemarks: "Do not allocate container until gate blockers are closed.",
+    placeOfLoading: "TBD",
+    loadingTime: "—",
+    totalCartons: 1110,
+    totalDipsCartons: 0,
+    checkedByExport: "—",
+    qualityInspector: "—",
+    countBy: "—",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "1801",
+        productName: "Dark Chocolate Slab",
+        packingDesc: "100gx12pcsx12box",
+        section: "Chocolate",
+        totalCartons: 650,
+        dipsCartons: 0,
+        lotNo: "PENDING",
+        mfgDate: "—",
+        expDate: "—",
+        grossWtKg: 17.28,
+        totalGrossWtKg: 11232,
+      },
+      {
+        sr: 2,
+        finalCode: "1823",
+        productName: "Milk Chocolate Assorted Bites",
+        packingDesc: "150gx8pcsx12box",
+        section: "Chocolate",
+        totalCartons: 460,
+        dipsCartons: 0,
+        lotNo: "PENDING",
+        mfgDate: "—",
+        expDate: "—",
+        grossWtKg: 15.84,
+        totalGrossWtKg: 7286.4,
+      },
+    ],
+  },
+  {
+    id: "con-choc-017",
+    reference: "GFI-EU-CHOC-2026-017",
+    destination: "Koper, Slovenia",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "FUTURE_EXPORT",
+    lineSummary: ["Chocolate and cocoa wafer mix / cocoa route unresolved"],
+    gateStatus: "BLOCKED",
+    outputEligibility: "HELD",
+    traceabilityStatus: "BLOCKED",
+    policyNarrative:
+      "This future route remains blocked because cocoa-linked evidence is incomplete and supplier remediation remains open.",
+    issues: [
+      {
+        code: "COCOA_GEO_MISSING",
+        severity: "CRITICAL",
+        sourceDomain: "geolocation",
+        blocking: true,
+        message: "Approved cocoa geolocation evidence is missing for this route.",
+      },
+      {
+        code: "COCOA_COC_MISSING",
+        severity: "HIGH",
+        sourceDomain: "documents",
+        blocking: true,
+        message: "No cocoa chain-of-custody trade proof is attached to the dispatch package.",
+      },
+      {
+        code: "SUPPLIER_PACK_INCOMPLETE",
+        severity: "CRITICAL",
+        sourceDomain: "suppliers",
+        blocking: true,
+        message: "Supplier provenance pack is still incomplete for cocoa release planning.",
+      },
+    ],
+    nextAction: "Retain shipment block and continue supplier and document remediation for the cocoa path.",
+    saleOrderNo: "2005123",
+    dispatchDate: "—",
+    invoiceNo: "5254",
+    customerRefNo: "26",
+    pfaNo: "6454",
+    country: "Slovenia",
+    containerNo: "PENDING",
+    containerSize: "40ft HC",
+    cbm: 60,
+    weightLimitKg: 25800,
+    grossWeightTons: 17.078,
+    sealNo: "—",
+    truckNo: "—",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: false,
+    fitForLoading: false,
+    notFitReason: "Blocked until cocoa provenance blockers are fully cleared.",
+    specialRemarks: "No loading action permitted; hold in planning queue only.",
+    placeOfLoading: "TBD",
+    loadingTime: "—",
+    totalCartons: 1230,
+    totalDipsCartons: 0,
+    checkedByExport: "—",
+    qualityInspector: "—",
+    countBy: "—",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "1801",
+        productName: "Dark Chocolate Slab",
+        packingDesc: "100gx12pcsx12box",
+        section: "Chocolate",
+        totalCartons: 700,
+        dipsCartons: 0,
+        lotNo: "PENDING",
+        mfgDate: "—",
+        expDate: "—",
+        grossWtKg: 17.28,
+        totalGrossWtKg: 12096,
+      },
+      {
+        sr: 2,
+        finalCode: "7318",
+        productName: "Cocoa Wafer Fingers",
+        packingDesc: "24gx24pcsx12box",
+        section: "Wafers",
+        totalCartons: 530,
+        dipsCartons: 0,
+        lotNo: "PENDING",
+        mfgDate: "—",
+        expDate: "—",
+        grossWtKg: 9.4,
+        totalGrossWtKg: 4982,
+      },
+    ],
+  },
+  {
+    id: "con-choc-018",
+    reference: "GFI-EU-CHOC-2026-018",
+    destination: "Gdansk, Poland",
+    operatorAgentId: "agent-rhine-bv",
+    shipmentMode: "FUTURE_EXPORT",
+    lineSummary: ["Chocolate / HS 180690 / future release blocked by unresolved cocoa diligence"],
+    gateStatus: "BLOCKED",
+    outputEligibility: "HELD",
+    traceabilityStatus: "BLOCKED",
+    policyNarrative:
+      "This route remains blocked because cocoa provenance, geolocation, and transaction-level CoC evidence are still missing.",
+    issues: [
+      {
+        code: "COCOA_GEO_MISSING",
+        severity: "CRITICAL",
+        sourceDomain: "geolocation",
+        blocking: true,
+        message: "No approved cocoa plot package is linked for this future route.",
+      },
+      {
+        code: "COCOA_COC_MISSING",
+        severity: "HIGH",
+        sourceDomain: "documents",
+        blocking: true,
+        message: "No cocoa CoC transaction evidence is attached for export release.",
+      },
+      {
+        code: "SUPPLIER_RESPONSE_OPEN",
+        severity: "CRITICAL",
+        sourceDomain: "suppliers",
+        blocking: true,
+        message: "Supplier remediation remains open and prevents release planning.",
+      },
+    ],
+    nextAction: "Keep shipment blocked and continue cocoa provenance remediation before route activation.",
+    saleOrderNo: "2005124",
+    dispatchDate: "—",
+    invoiceNo: "5255",
+    customerRefNo: "27",
+    pfaNo: "6455",
+    country: "Poland",
+    containerNo: "PENDING",
+    containerSize: "40ft HC",
+    cbm: 61,
+    weightLimitKg: 26200,
+    grossWeightTons: 19.2672,
+    sealNo: "—",
+    truckNo: "—",
+    masterCaseColor: "WHITE",
+    logoOnCarton: "CUSTOMER",
+    tapeOnCarton: "CUSTOMER",
+    cleanedBeforeLoading: false,
+    fitForLoading: false,
+    notFitReason: "Blocked until the cocoa route clears geolocation and CoC review.",
+    specialRemarks: "Planning reference only; export slot must remain closed.",
+    placeOfLoading: "TBD",
+    loadingTime: "—",
+    totalCartons: 1160,
+    totalDipsCartons: 0,
+    checkedByExport: "—",
+    qualityInspector: "—",
+    countBy: "—",
+    dispatchLines: [
+      {
+        sr: 1,
+        finalCode: "1823",
+        productName: "Milk Chocolate Assorted Bites",
+        packingDesc: "150gx8pcsx12box",
+        section: "Chocolate",
+        totalCartons: 540,
+        dipsCartons: 0,
+        lotNo: "PENDING",
+        mfgDate: "—",
+        expDate: "—",
+        grossWtKg: 15.84,
+        totalGrossWtKg: 8553.6,
+      },
+      {
+        sr: 2,
+        finalCode: "1801",
+        productName: "Dark Chocolate Slab",
+        packingDesc: "100gx12pcsx12box",
+        section: "Chocolate",
+        totalCartons: 620,
+        dipsCartons: 0,
+        lotNo: "PENDING",
+        mfgDate: "—",
+        expDate: "—",
+        grossWtKg: 17.28,
+        totalGrossWtKg: 10713.6,
+      },
+    ],
+  },
 ];
 
 export const outputPackages: OutputPackageRecord[] = [
@@ -2170,7 +3494,271 @@ export const outputPackages: OutputPackageRecord[] = [
     supersessionNote: "New snapshot preserved after Indococoa route via N A Enterprises discovery, but package remains blocked.",
     artifacts: ["blocked-package-summary.json"],
   },
+  {
+    id: "pkg-gum-004",
+    consignmentId: "con-gum-004",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-24-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 6,
+    sourceAnchorCount: 9,
+    packageRef: "PKG-GFI-GUM-2026-004",
+    supersessionNote: "Final export-ready package compiled after scope memo and dispatch check reconciliation.",
+    artifacts: ["package.json", "package.xml", "scope-memo.pdf", "dispatch-checklist.pdf"],
+  },
+  {
+    id: "pkg-candy-005",
+    consignmentId: "con-candy-005",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-24-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 6,
+    sourceAnchorCount: 8,
+    packageRef: "PKG-GFI-CND-2026-005",
+    supersessionNote: "Customer carton artwork and dispatch packet aligned in the final export snapshot.",
+    artifacts: ["package.json", "package.xml", "evidence-index.csv", "dispatch-checklist.pdf"],
+  },
+  {
+    id: "pkg-jelly-006",
+    consignmentId: "con-jelly-006",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-24-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 7,
+    sourceAnchorCount: 9,
+    packageRef: "PKG-GFI-JLY-2026-006",
+    supersessionNote: "Release-ready after final dispatch evidence upload and carton count reconciliation.",
+    artifacts: ["package.json", "package.xml", "evidence-index.csv", "dispatch-checklist.pdf"],
+  },
+  {
+    id: "pkg-bubblegum-007",
+    consignmentId: "con-bubblegum-007",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-25-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 6,
+    sourceAnchorCount: 9,
+    packageRef: "PKG-GFI-BBL-2026-007",
+    supersessionNote: "Bubble gum route closed after final scope memo and release-note alignment.",
+    artifacts: ["package.json", "package.xml", "scope-memo.pdf", "evidence-index.csv"],
+  },
+  {
+    id: "pkg-candy-008",
+    consignmentId: "con-candy-008",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-25-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 7,
+    sourceAnchorCount: 10,
+    packageRef: "PKG-GFI-CND-2026-008",
+    supersessionNote: "Mixed confectionery route packaged after dispatch-weight and carton reconciliation.",
+    artifacts: ["package.json", "package.xml", "evidence-index.csv", "dispatch-checklist.pdf"],
+  },
+  {
+    id: "pkg-jelly-009",
+    consignmentId: "con-jelly-009",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-25-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 6,
+    sourceAnchorCount: 8,
+    packageRef: "PKG-GFI-JLY-2026-009",
+    supersessionNote: "Release-ready jelly route archived after final dispatch sign-off.",
+    artifacts: ["package.json", "package.xml", "evidence-index.csv", "dispatch-checklist.pdf"],
+  },
+  {
+    id: "pkg-gum-010",
+    consignmentId: "con-gum-010",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-26-v1",
+    status: "READY_FOR_AGENT",
+    evidenceIndexCount: 7,
+    sourceAnchorCount: 10,
+    packageRef: "PKG-GFI-GUM-2026-010",
+    supersessionNote: "Final route package preserves the approved release note and supporting scope memo.",
+    artifacts: ["package.json", "package.xml", "scope-memo.pdf", "evidence-index.csv"],
+  },
+  {
+    id: "pkg-chew-011",
+    consignmentId: "con-chew-011",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-26-v2",
+    status: "HELD",
+    evidenceIndexCount: 8,
+    sourceAnchorCount: 12,
+    packageRef: "PKG-GFI-CHW-2026-011",
+    supersessionNote: "Held pending final palm scope memo and export desk reconfirmation.",
+    artifacts: ["draft-package.json", "draft-evidence-index.csv", "scope-review-note.pdf"],
+  },
+  {
+    id: "pkg-wafers-012",
+    consignmentId: "con-wafers-012",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-26-v1",
+    status: "HELD",
+    evidenceIndexCount: 8,
+    sourceAnchorCount: 11,
+    packageRef: "PKG-GFI-WAF-2026-012",
+    supersessionNote: "Wafer route package is complete but held until palm review closes.",
+    artifacts: ["draft-package.json", "draft-evidence-index.csv", "scope-review-note.pdf"],
+  },
+  {
+    id: "pkg-chew-013",
+    consignmentId: "con-chew-013",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-26-v1",
+    status: "HELD",
+    evidenceIndexCount: 8,
+    sourceAnchorCount: 12,
+    packageRef: "PKG-GFI-CHW-2026-013",
+    supersessionNote: "Package is retained in held state until palm scope memo is superseded.",
+    artifacts: ["draft-package.json", "draft-evidence-index.csv", "scope-review-note.pdf"],
+  },
+  {
+    id: "pkg-chew-014",
+    consignmentId: "con-chew-014",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-27-v1",
+    status: "HELD",
+    evidenceIndexCount: 7,
+    sourceAnchorCount: 11,
+    packageRef: "PKG-GFI-CHW-2026-014",
+    supersessionNote: "Future chew export package remains held until scope closure and route booking.",
+    artifacts: ["future-route-summary.json", "draft-evidence-index.csv", "scope-review-note.pdf"],
+  },
+  {
+    id: "pkg-wafers-015",
+    consignmentId: "con-wafers-015",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-27-v1",
+    status: "HELD",
+    evidenceIndexCount: 7,
+    sourceAnchorCount: 10,
+    packageRef: "PKG-GFI-WAF-2026-015",
+    supersessionNote: "Future wafer package preserved in held state while palm review remains open.",
+    artifacts: ["future-route-summary.json", "draft-evidence-index.csv", "scope-review-note.pdf"],
+  },
+  {
+    id: "pkg-chocolate-016",
+    consignmentId: "con-choc-016",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-27-v2",
+    status: "HELD",
+    evidenceIndexCount: 3,
+    sourceAnchorCount: 7,
+    packageRef: "PKG-GFI-CHOC-2026-016",
+    supersessionNote: "Blocked route package preserved for audit trail while cocoa provenance gaps remain open.",
+    artifacts: ["blocked-package-summary.json", "supplier-remediation-log.csv"],
+  },
+  {
+    id: "pkg-chocolate-017",
+    consignmentId: "con-choc-017",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-27-v1",
+    status: "HELD",
+    evidenceIndexCount: 4,
+    sourceAnchorCount: 7,
+    packageRef: "PKG-GFI-CHOC-2026-017",
+    supersessionNote: "Blocked cocoa route remains fail-closed and is preserved for remediation review.",
+    artifacts: ["blocked-package-summary.json", "supplier-remediation-log.csv"],
+  },
+  {
+    id: "pkg-chocolate-018",
+    consignmentId: "con-choc-018",
+    mode: "COMPLIANCE_PACKAGE",
+    snapshotVersion: "SNAP-2026-05-27-v1",
+    status: "HELD",
+    evidenceIndexCount: 4,
+    sourceAnchorCount: 7,
+    packageRef: "PKG-GFI-CHOC-2026-018",
+    supersessionNote: "Blocked package retained while cocoa diligence and supplier remediation remain unresolved.",
+    artifacts: ["blocked-package-summary.json", "supplier-remediation-log.csv"],
+  },
 ];
+
+const supplementalComplianceDocumentBatches = [
+  {
+    role: "SUPPLIER_AGREEMENT",
+    titlePrefix: "Supplier master agreement",
+    linkedEntity: "GFI supplier network",
+    count: 7,
+    expiries: ["2026-12-31", "2027-01-31", "2027-03-31"],
+  },
+  {
+    role: "SUPPLIER_DECLARATION",
+    titlePrefix: "Supplier EUDR declaration",
+    linkedEntity: "Supplier declaration register",
+    count: 8,
+    expiries: ["2026-07-28", "2026-09-30", "2027-02-28"],
+  },
+  {
+    role: "PRODUCT_SPECIFICATION",
+    titlePrefix: "Product and ingredient specification",
+    linkedEntity: "Product and BOM library",
+    count: 6,
+    expiries: ["2026-10-15", "2027-04-30"],
+  },
+  {
+    role: "CHAIN_OF_CUSTODY_PROOF",
+    titlePrefix: "Chain of custody transaction proof",
+    linkedEntity: "CoC evidence register",
+    count: 7,
+    expiries: ["2026-07-18", "2026-11-30", "2027-05-31"],
+  },
+  {
+    role: "GEOLOCATION_SHAPEFILE",
+    titlePrefix: "Farm geolocation mapping record",
+    linkedEntity: "Plot evidence library",
+    count: 7,
+    expiries: ["2026-08-10", "2027-01-15"],
+  },
+  {
+    role: "LEGAL_LICENSE",
+    titlePrefix: "Legal permit and land-rights evidence",
+    linkedEntity: "Legal evidence register",
+    count: 6,
+    expiries: ["2026-07-25", "2026-12-20", "2027-06-30"],
+  },
+  {
+    role: "AUDIT_SUMMARY",
+    titlePrefix: "Traceability audit assessment report",
+    linkedEntity: "Audit evidence register",
+    count: 6,
+    expiries: ["2026-09-15", "2027-03-15"],
+  },
+  {
+    role: "POLICY_PROCEDURE",
+    titlePrefix: "Compliance policy and SOP",
+    linkedEntity: "Governance document library",
+    count: 5,
+    expiries: ["2026-10-30", "2027-02-15"],
+  },
+  {
+    role: "DUE_DILIGENCE_REPORT",
+    titlePrefix: "Due diligence conclusion memo",
+    linkedEntity: "Due diligence file",
+    count: 5,
+    expiries: ["2026-08-25", "2027-05-15"],
+  },
+] as const;
+
+const supplementalComplianceDocuments: DocumentRecord[] = supplementalComplianceDocumentBatches.flatMap((batch) =>
+  Array.from({ length: batch.count }, (_, index) => {
+    const sequence = index + 1;
+    const status: DocumentRecord["status"] = index % 13 === 0 ? "DRAFT" : index % 11 === 0 ? "REQUESTED" : "CURRENT";
+
+    return {
+      id: `doc-supplemental-${batch.role.toLowerCase().replace(/_/g, "-")}-${sequence}`,
+      title: `${batch.titlePrefix} ${String(sequence).padStart(2, "0")}`,
+      documentRole: batch.role,
+      linkedEntity: batch.linkedEntity,
+      status,
+      note: "Supplemental dashboard evidence record used for document coverage analytics.",
+      issuedAt: "2026-05-01",
+      expiresAt: batch.expiries[index % batch.expiries.length],
+    };
+  }),
+);
 
 export const documents: DocumentRecord[] = [
   {
@@ -2180,6 +3768,8 @@ export const documents: DocumentRecord[] = [
     linkedEntity: "Cargill Palm Products SDN BHD",
     status: "CURRENT",
     note: "Valid until January 2028 but covers both SG and MB; transaction-specific proof still needed.",
+    issuedAt: "2026-01-12",
+    expiresAt: "2028-01-12",
   },
   {
     id: "doc-cargill-msds",
@@ -2188,6 +3778,8 @@ export const documents: DocumentRecord[] = [
     linkedEntity: "Cargill palm deliveries",
     status: "CURRENT",
     note: "Only current source showing RSPO SG for the specific palm product.",
+    issuedAt: "2026-04-18",
+    expiresAt: "2026-07-30",
   },
   {
     id: "doc-jb-request",
@@ -2196,6 +3788,8 @@ export const documents: DocumentRecord[] = [
     linkedEntity: "JB Cocoa SDN BHD",
     status: "CURRENT",
     note: "Outstanding; waiting for formal response pack.",
+    issuedAt: "2026-05-15",
+    expiresAt: "2026-07-15",
   },
   {
     id: "doc-indococoa-request",
@@ -2204,6 +3798,8 @@ export const documents: DocumentRecord[] = [
     linkedEntity: "N A Enterprises (Indococoa)",
     status: "CURRENT",
     note: "Initial outreach opened after on-site discovery of Indococoa supplied via N A Enterprises.",
+    issuedAt: "2026-05-20",
+    expiresAt: "2026-07-20",
   },
   {
     id: "doc-chew-scope-note",
@@ -2212,6 +3808,8 @@ export const documents: DocumentRecord[] = [
     linkedEntity: "Chew",
     status: "DRAFT",
     note: "Awaiting customs classification confirmation for palm route.",
+    issuedAt: "2026-05-22",
+    expiresAt: "2026-08-15",
   },
   {
     id: "doc-bubblegum-scope",
@@ -2220,7 +3818,10 @@ export const documents: DocumentRecord[] = [
     linkedEntity: "Bubble Gum",
     status: "CURRENT",
     note: "Used in the compliance package instead of commodity provenance evidence.",
+    issuedAt: "2026-05-22",
+    expiresAt: "2027-05-22",
   },
+  ...supplementalComplianceDocuments,
 ];
 
 export const concerns: ConcernRecord[] = [
@@ -3335,6 +4936,232 @@ export const eudrEvidenceAttachments: EudrEvidenceAttachment[] = [
   },
 ];
 
+type ConsignmentDestinationRegion = "Europe" | "Gulf" | "Other";
+
+const CONSIGNMENT_DESTINATION_OVERRIDES: Record<
+  string,
+  { destination: string; country: string; region: ConsignmentDestinationRegion }
+> = {
+  "con-bubblegum-001": { destination: "Rotterdam, Netherlands", country: "Netherlands", region: "Europe" },
+  "con-chew-002": { destination: "Hamburg, Germany", country: "Germany", region: "Europe" },
+  "con-choc-003": { destination: "Gdansk, Poland", country: "Poland", region: "Europe" },
+  "con-gum-004": { destination: "Prague, Czech Republic", country: "Czech Republic", region: "Europe" },
+  "con-candy-005": { destination: "Valencia, Spain", country: "Spain", region: "Europe" },
+  "con-jelly-006": { destination: "Varna, Bulgaria", country: "Bulgaria", region: "Europe" },
+  "con-bubblegum-007": { destination: "Le Havre, France", country: "France", region: "Europe" },
+  "con-candy-008": { destination: "Dublin, Ireland", country: "Ireland", region: "Europe" },
+  "con-jelly-009": { destination: "Genoa, Italy", country: "Italy", region: "Europe" },
+  "con-gum-010": { destination: "Constanta, Romania", country: "Romania", region: "Europe" },
+  "con-chew-011": { destination: "Bremerhaven, Germany", country: "Germany", region: "Europe" },
+  "con-wafers-012": { destination: "Dubai, United Arab Emirates", country: "United Arab Emirates", region: "Gulf" },
+  "con-chew-013": { destination: "Jeddah, Saudi Arabia", country: "Saudi Arabia", region: "Gulf" },
+  "con-chew-014": { destination: "Doha, Qatar", country: "Qatar", region: "Gulf" },
+  "con-wafers-015": { destination: "Muscat, Oman", country: "Oman", region: "Gulf" },
+  "con-choc-016": { destination: "Kuwait City, Kuwait", country: "Kuwait", region: "Gulf" },
+  "con-choc-017": { destination: "Singapore, Singapore", country: "Singapore", region: "Other" },
+  "con-choc-018": { destination: "Cape Town, South Africa", country: "South Africa", region: "Other" },
+};
+
+const CONSIGNMENT_SHIPMENT_STATUSES: Record<ConsignmentRecord["id"], ConsignmentRecord["shipmentStatus"]> = {
+  "con-bubblegum-001": "SHIPPED",
+  "con-chew-002": "SHIPPED",
+  "con-choc-003": "TO_BE_SHIPPED",
+  "con-gum-004": "SHIPPED",
+  "con-candy-005": "SHIPPED",
+  "con-jelly-006": "SHIPPED",
+  "con-bubblegum-007": "IN_TRANSIT",
+  "con-candy-008": "SHIPPED",
+  "con-jelly-009": "IN_TRANSIT",
+  "con-gum-010": "SHIPPED",
+  "con-chew-011": "IN_TRANSIT",
+  "con-wafers-012": "IN_TRANSIT",
+  "con-chew-013": "IN_TRANSIT",
+  "con-chew-014": "TO_BE_SHIPPED",
+  "con-wafers-015": "TO_BE_SHIPPED",
+  "con-choc-016": "TO_BE_SHIPPED",
+  "con-choc-017": "TO_BE_SHIPPED",
+  "con-choc-018": "TO_BE_SHIPPED",
+};
+
+const EUROPE_COUNTRY_TARGETS = [
+  { country: "Netherlands", destination: "Rotterdam, Netherlands", targetCount: 14, templateId: "con-bubblegum-001", refCode: "NLD" },
+  { country: "Poland", destination: "Gdansk, Poland", targetCount: 10, templateId: "con-choc-003", refCode: "POL" },
+  { country: "Czech Republic", destination: "Prague, Czech Republic", targetCount: 9, templateId: "con-gum-004", refCode: "CZE" },
+  { country: "Germany", destination: "Hamburg, Germany", targetCount: 7, templateId: "con-chew-002", refCode: "DEU" },
+  { country: "Spain", destination: "Valencia, Spain", targetCount: 5, templateId: "con-candy-005", refCode: "ESP" },
+  { country: "Bulgaria", destination: "Varna, Bulgaria", targetCount: 4, templateId: "con-jelly-006", refCode: "BGR" },
+  { country: "France", destination: "Le Havre, France", targetCount: 3, templateId: "con-bubblegum-007", refCode: "FRA" },
+  { country: "Ireland", destination: "Dublin, Ireland", targetCount: 3, templateId: "con-candy-008", refCode: "IRL" },
+  { country: "Italy", destination: "Genoa, Italy", targetCount: 1, templateId: "con-jelly-009", refCode: "ITA" },
+  { country: "Romania", destination: "Constanta, Romania", targetCount: 1, templateId: "con-gum-010", refCode: "ROU" },
+] as const;
+
+const GULF_COUNTRY_TARGETS = [
+  { country: "United Arab Emirates", destination: "Dubai, United Arab Emirates", targetCount: 4, templateId: "con-wafers-012", refCode: "UAE" },
+  { country: "Saudi Arabia", destination: "Jeddah, Saudi Arabia", targetCount: 3, templateId: "con-chew-013", refCode: "SAU" },
+  { country: "Qatar", destination: "Doha, Qatar", targetCount: 2, templateId: "con-chew-014", refCode: "QAT" },
+  { country: "Oman", destination: "Muscat, Oman", targetCount: 2, templateId: "con-wafers-015", refCode: "OMN" },
+  { country: "Kuwait", destination: "Kuwait City, Kuwait", targetCount: 1, templateId: "con-choc-016", refCode: "KWT" },
+] as const;
+
+const DASHBOARD_COUNTRY_TARGETS = [...EUROPE_COUNTRY_TARGETS, ...GULF_COUNTRY_TARGETS] as const;
+
+const SYNTHETIC_DISPATCH_DATES = [
+  "08-01-2026",
+  "22-01-2026",
+  "06-02-2026",
+  "20-02-2026",
+  "05-03-2026",
+  "19-03-2026",
+  "02-04-2026",
+  "16-04-2026",
+  "30-04-2026",
+  "14-05-2026",
+  "28-05-2026",
+  "11-06-2026",
+  "25-06-2026",
+  "09-07-2026",
+  "23-07-2026",
+  "06-08-2026",
+];
+
+function applyConsignmentDestinationMix(records: ConsignmentRecord[]) {
+  records.forEach((record) => {
+    const override = CONSIGNMENT_DESTINATION_OVERRIDES[record.id];
+    if (!override) {
+      return;
+    }
+
+    record.destination = override.destination;
+    record.country = override.country;
+
+    const marketCode =
+      override.region === "Europe" ? "EU" : override.region === "Gulf" ? "GCC" : "INT";
+    record.reference = record.reference.replace(/^GFI-(EU|GCC|INT)-/, `GFI-${marketCode}-`);
+  });
+}
+
+function applyConsignmentShipmentStatuses(records: ConsignmentRecord[]) {
+  records.forEach((record) => {
+    record.shipmentStatus = CONSIGNMENT_SHIPMENT_STATUSES[record.id] ?? "TO_BE_SHIPPED";
+  });
+}
+
+function syncLifecycleFields(record: ConsignmentRecord) {
+  switch (record.shipmentStatus) {
+    case "SHIPPED":
+      record.gateStatus = "READY";
+      record.outputEligibility = "PACKAGE_READY";
+      record.traceabilityStatus = "TRACEABLE";
+      record.nextAction = "Archive dispatch evidence and retain delivered route records for country-level reporting.";
+      break;
+    case "IN_TRANSIT":
+      record.gateStatus = "READY";
+      record.outputEligibility = "PACKAGE_READY";
+      record.traceabilityStatus = "TRACEABLE";
+      record.nextAction = "Monitor transit milestones and confirm arrival updates with the destination operator.";
+      break;
+    case "TO_BE_SHIPPED":
+    default:
+      if (record.gateStatus !== "BLOCKED") {
+        record.gateStatus = "REVIEW_REQUIRED";
+        record.outputEligibility = "SCOPE_REVIEW";
+        record.traceabilityStatus = "REVIEW_REQUIRED";
+      } else {
+        record.outputEligibility = "HELD";
+        record.traceabilityStatus = "BLOCKED";
+      }
+      record.nextAction =
+        record.gateStatus === "BLOCKED"
+          ? "Keep shipment on hold until all blocking evidence gaps are resolved."
+          : "Finalize dispatch preparation, booking, and release checks before vessel handoff.";
+      break;
+  }
+}
+
+function addSyntheticDashboardConsignments(records: ConsignmentRecord[]) {
+  let syntheticCounter = 0;
+
+  DASHBOARD_COUNTRY_TARGETS.forEach((target) => {
+    const existingForCountry = records.filter((record) => record.country === target.country);
+    const missingCount = target.targetCount - existingForCountry.length;
+    if (missingCount <= 0) {
+      return;
+    }
+
+    const template = records.find((record) => record.id === target.templateId);
+    if (!template) {
+      return;
+    }
+
+    for (let index = 0; index < missingCount; index += 1) {
+      const clone = JSON.parse(JSON.stringify(template)) as ConsignmentRecord;
+      const sequence = existingForCountry.length + index + 1;
+      const absoluteSequence = 100 + syntheticCounter;
+      const cartonsBase = Math.max(220, (template.totalCartons ?? 320) + ((index % 5) - 2) * 28 + syntheticCounter * 3);
+      const dipsBase = Math.max(36, Math.round((template.totalDipsCartons ?? Math.max(24, cartonsBase * 0.18)) + (index % 4) * 6));
+      const grossBase = Number((((template.grossWeightTons ?? 13.5) + (index % 4) * 0.65 + syntheticCounter * 0.04)).toFixed(1));
+      const shipmentStatus: NonNullable<ConsignmentRecord["shipmentStatus"]> =
+        index < Math.ceil(missingCount * 0.5)
+          ? "SHIPPED"
+          : index < Math.ceil(missingCount * 0.8)
+            ? "IN_TRANSIT"
+            : "TO_BE_SHIPPED";
+
+      clone.id = `con-auto-${target.refCode.toLowerCase()}-${String(sequence).padStart(3, "0")}`;
+      clone.reference = `GFI-EU-${target.refCode}-2026-${String(absoluteSequence).padStart(3, "0")}`;
+      clone.destination = target.destination;
+      clone.country = target.country;
+      clone.shipmentStatus = shipmentStatus;
+      clone.saleOrderNo = String(320000 + syntheticCounter);
+      clone.customerRefNo = `CUST-${target.refCode}-${String(sequence).padStart(3, "0")}`;
+      clone.invoiceNo = `INV-${target.refCode}-${String(absoluteSequence).padStart(3, "0")}`;
+      clone.pfaNo = `PFA-${target.refCode}-${String(absoluteSequence).padStart(3, "0")}`;
+      clone.totalCartons = cartonsBase;
+      clone.totalDipsCartons = dipsBase;
+      clone.grossWeightTons = grossBase;
+      clone.cbm = Number((((template.cbm ?? 38) + (index % 3) * 1.8)).toFixed(1));
+      clone.weightLimitKg = template.weightLimitKg ?? 26800;
+      clone.containerNo =
+        shipmentStatus === "TO_BE_SHIPPED" && index % 2 === 1
+          ? "PENDING"
+          : `${target.refCode}${String(760000 + syntheticCounter).padStart(6, "0")}`;
+      clone.containerSize = shipmentStatus === "TO_BE_SHIPPED" && clone.containerNo === "PENDING" ? template.containerSize : "40HQ";
+      clone.sealNo = shipmentStatus === "TO_BE_SHIPPED" && clone.containerNo === "PENDING" ? "PENDING" : `${target.refCode}${String(410000 + syntheticCounter).padStart(6, "0")}`;
+      clone.dispatchDate =
+        shipmentStatus === "TO_BE_SHIPPED" && index % 3 === 2
+          ? "—"
+          : SYNTHETIC_DISPATCH_DATES[syntheticCounter % SYNTHETIC_DISPATCH_DATES.length];
+      clone.dispatchLines = (clone.dispatchLines ?? []).map((line, lineIndex) => {
+        const adjustedCartons = Math.max(24, Math.round(line.totalCartons * (0.88 + ((index + lineIndex) % 4) * 0.06)));
+        const adjustedDips = Math.max(4, Math.round(line.dipsCartons * (0.85 + ((index + lineIndex) % 3) * 0.08)));
+        const adjustedGross = Number((line.grossWtKg * (0.94 + ((index + lineIndex) % 4) * 0.03)).toFixed(2));
+        return {
+          ...line,
+          lotNo: `${line.lotNo}-${target.refCode}-${String(sequence).padStart(2, "0")}`,
+          totalCartons: adjustedCartons,
+          dipsCartons: adjustedDips,
+          totalGrossWtKg: Number((line.totalGrossWtKg * (0.94 + ((index + lineIndex) % 4) * 0.03)).toFixed(2)),
+          grossWtKg: adjustedGross,
+        };
+      });
+      clone.lineSummary = clone.dispatchLines?.length
+        ? clone.dispatchLines
+          .slice(0, 2)
+          .map((line) => `${line.productName} / ${line.totalCartons.toLocaleString()} ctns / ${target.country}`)
+        : [`${template.lineSummary[0] ?? "Mixed export cargo"} / ${target.country}`];
+
+      syncLifecycleFields(clone);
+      records.push(clone);
+      syntheticCounter += 1;
+    }
+  });
+}
+
+applyConsignmentDestinationMix(consignments);
+applyConsignmentShipmentStatuses(consignments);
+addSyntheticDashboardConsignments(consignments);
+
 export const dashboardMetrics = {
   productsInScope: 2,
   supplierResponsesPending: 2,
@@ -3363,6 +5190,145 @@ export function getOutputPackageForConsignment(consignmentId: string): OutputPac
   return outputPackages.find((pkg) => pkg.consignmentId === consignmentId);
 }
 
+function buildOriginCountriesForIngredient(
+  ingredient: IngredientRecord,
+  allPlots: PlotRecord[],
+  allSuppliers: SupplierRecord[],
+): string[] {
+  const plotCountries = allPlots
+    .filter((plot) => ingredient.supplierIds.includes(plot.supplierId))
+    .map((plot) => plot.sourceCountry)
+    .filter(Boolean);
+  const supplierCountries = allSuppliers
+    .filter((supplier) => ingredient.supplierIds.includes(supplier.id))
+    .map((supplier) => supplier.country)
+    .filter(Boolean);
+  return [...new Set([...plotCountries, ...supplierCountries])];
+}
+
+function buildScenarioLegalityDossiers(
+  allProducts: ProductRecord[],
+  allPlots: PlotRecord[],
+  allSuppliers: SupplierRecord[],
+): LegalityDossierRecord[] {
+  return allProducts.flatMap((product) =>
+    product.ingredients.flatMap((ingredient) => {
+      const originCountries = buildOriginCountriesForIngredient(ingredient, allPlots, allSuppliers);
+      return originCountries.map((originCountry) => {
+        const euRiskTier = deriveIngredientRiskTier([originCountry]);
+        const dossier = buildLegalityDossierTemplate({
+          id: `legality-${product.id}-${ingredient.id}-${originCountry.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          ingredientId: ingredient.id,
+          productId: product.id,
+          originCountry,
+          euRiskTier,
+          dueDiligenceMode: getDueDiligenceMode(euRiskTier),
+        }) as LegalityDossierRecord;
+
+        // Seed realistic documents and statuses for segregation
+        dossier.documents = dossier.documents.map((doc) => {
+          let verificationStatus: "NOT_REVIEWED" | "VERIFIED" | "EXPIRED" | "REJECTED" = "VERIFIED";
+          let hasFile = true;
+
+          if (originCountry === "Pakistan") {
+            verificationStatus = "VERIFIED";
+          } else if (originCountry === "Malaysia") {
+            if (doc.legalArea === "LABOR_REGULATIONS") {
+              verificationStatus = "NOT_REVIEWED";
+            } else if (doc.legalArea === "TAX_AND_CUSTOMS") {
+              hasFile = false; // Gap
+              verificationStatus = "NOT_REVIEWED";
+            }
+          } else if (originCountry === "Ghana") {
+            if (doc.legalArea === "ENVIRONMENTAL_PROTECTION") {
+              verificationStatus = "NOT_REVIEWED";
+            }
+          } else if (originCountry === "Ivory Coast") {
+            if (doc.legalArea === "LABOR_REGULATIONS") {
+              hasFile = false; // Gap
+              verificationStatus = "NOT_REVIEWED";
+            } else if (doc.legalArea === "TAX_AND_CUSTOMS") {
+              verificationStatus = "NOT_REVIEWED";
+            }
+          } else if (originCountry === "Indonesia") {
+            if (doc.legalArea === "LAND_TENURE") {
+              verificationStatus = "NOT_REVIEWED";
+            } else if (doc.legalArea === "LABOR_REGULATIONS") {
+              verificationStatus = "NOT_REVIEWED";
+            } else if (doc.legalArea === "TAX_AND_CUSTOMS") {
+              hasFile = false; // Gap
+              verificationStatus = "NOT_REVIEWED";
+            }
+          }
+
+          if (hasFile) {
+            return {
+              ...doc,
+              fileName: `${doc.sampleDocumentLabel.replace(/[\s/]+/g, "_").toLowerCase()}_ver1.pdf`,
+              fileType: "application/pdf",
+              fileSize: "2.4 MB",
+              uploadedAt: new Date(Date.UTC(2026, 3, 5)).toISOString(),
+              uploadedBy: "Compliance Officer",
+              verificationStatus,
+            };
+          }
+
+          return doc;
+        });
+
+        // Summarize overall status of the dossier using the official summarizeLegalityDossier
+        dossier.overallStatus = summarizeLegalityDossier(dossier.documents);
+
+        return dossier;
+      });
+    }),
+  );
+}
+
+function enrichIngredientComplianceMetadata(
+  allProducts: ProductRecord[],
+  allPlots: PlotRecord[],
+  allSuppliers: SupplierRecord[],
+  allLegalityDossiers: LegalityDossierRecord[],
+  allDdsSubmissions: DdsSubmissionRecord[],
+): ProductRecord[] {
+  return allProducts.map((product) => ({
+    ...product,
+    ingredients: product.ingredients.map((ingredient) => {
+      const originCountries = buildOriginCountriesForIngredient(ingredient, allPlots, allSuppliers);
+      const primaryOriginCountry = originCountries[0] ?? "";
+      const euRiskTier = deriveIngredientRiskTier(originCountries);
+      const dueDiligenceMode = getDueDiligenceMode(euRiskTier);
+      const ingredientDossiers = allLegalityDossiers.filter(
+        (dossier) => dossier.productId === product.id && dossier.ingredientId === ingredient.id,
+      );
+      const legalityOverall = ingredientDossiers.length === 0
+        ? "GAPS_FOUND"
+        : ingredientDossiers.some((dossier) => dossier.overallStatus === "GAPS_FOUND")
+          ? "GAPS_FOUND"
+          : ingredientDossiers.every((dossier) => dossier.overallStatus === "COMPLETE")
+            ? "COMPLETE"
+            : ingredientDossiers.some((dossier) => dossier.overallStatus === "UNDER_REVIEW")
+              ? "UNDER_REVIEW"
+              : "PARTIAL";
+      const latestDdsSubmission = allDdsSubmissions
+        .filter((submission) => submission.productId === product.id && submission.ingredientId === ingredient.id)
+        .sort((left, right) => left.submittedAt.localeCompare(right.submittedAt))
+        .at(-1);
+
+      return {
+        ...ingredient,
+        originCountries,
+        primaryOriginCountry,
+        euRiskTier,
+        dueDiligenceMode,
+        legalityDossierStatus: toIngredientLegalityStatus(legalityOverall),
+        ddsStatus: latestDdsSubmission?.status === "TRACES_SUBMITTED" ? "TRACES_SUBMITTED" : "READY_FOR_TRACES",
+      };
+    }),
+  }));
+}
+
 export function getScenarioData(scenarioId: string) {
   // Deep copy base data to avoid mutating original exported constants
   const currentSuppliers = JSON.parse(JSON.stringify(suppliers)) as SupplierRecord[];
@@ -3386,6 +5352,8 @@ export function getScenarioData(scenarioId: string) {
   ) as IntermediaryDeclarationSubmission[];
   const currentFarmerSubmissions = JSON.parse(JSON.stringify(farmerDeclarationSubmissions)) as FarmerDeclarationSubmission[];
   const currentEudrEvidenceAttachments = JSON.parse(JSON.stringify(eudrEvidenceAttachments)) as EudrEvidenceAttachment[];
+  const currentDdsSubmissions: DdsSubmissionRecord[] = [];
+  const currentLegalityDossiers: LegalityDossierRecord[] = [];
 
   if (scenarioId === "after_cocoa_remediation") {
     // 1. JB Cocoa is Approved, risk level low, 100% geolocation, issues cleared
@@ -3853,9 +5821,18 @@ export function getScenarioData(scenarioId: string) {
     });
   });
 
+  currentLegalityDossiers.push(...buildScenarioLegalityDossiers(currentProducts, currentPlots, currentSuppliers));
+  const enrichedProducts = enrichIngredientComplianceMetadata(
+    currentProducts,
+    currentPlots,
+    currentSuppliers,
+    currentLegalityDossiers,
+    currentDdsSubmissions,
+  );
+
   // Recalculate metrics dynamically based on transformed lists
   const blockedConsignmentsCount = currentConsignments.filter(c => c.gateStatus === "BLOCKED").length;
-  const inScopeCount = currentProducts.filter(p => p.scopeStatus === "IN_SCOPE").length;
+  const inScopeCount = enrichedProducts.filter(p => p.scopeStatus === "IN_SCOPE").length;
   const pendingResponsesCount = currentSupplierRequests.filter(r => r.submissionStatus === "PENDING_RESPONSE").length;
   const missingGeoCount = currentPlots.filter(p => p.status === "REQUESTED" || p.status === "CHANGES_REQUESTED").length;
 
@@ -3870,7 +5847,7 @@ export function getScenarioData(scenarioId: string) {
 
   return {
     suppliers: currentSuppliers,
-    products: currentProducts,
+    products: enrichedProducts,
     consignments: currentConsignments,
     outputPackages: currentOutputPackages,
     plots: currentPlots,
@@ -3888,6 +5865,8 @@ export function getScenarioData(scenarioId: string) {
     intermediaryDeclarationSubmissions: currentIntermediarySubmissions,
     farmerDeclarationSubmissions: currentFarmerSubmissions,
     eudrEvidenceAttachments: currentEudrEvidenceAttachments,
+    ddsSubmissions: currentDdsSubmissions,
+    legalityDossiers: currentLegalityDossiers,
     metrics: dynamicMetrics,
   };
 }
