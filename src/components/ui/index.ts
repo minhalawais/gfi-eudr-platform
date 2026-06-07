@@ -5,6 +5,7 @@ export * from "./Button";
 export * from "./Card";
 export * from "./FormPrimitives";
 export * from "./Input";
+export * from "./PlatformFooter";
 export * from "./SectionHeader";
 export * from "./Select";
 export * from "./StatCard";

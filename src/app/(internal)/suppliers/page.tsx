@@ -1,11 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { Pencil, Plus, Send, Copy, AlertTriangle, CheckCircle2, Link2 } from "lucide-react";
-import { getProductName } from "@/lib/gfi-dummy-data";
-import { SupplyChainSnapshot } from "@/components/traceability/IngredientTraceabilityStudio";
+import React, { useMemo, useState, useEffect } from "react";
+import { Pencil, Plus, Send, Copy, AlertTriangle, CheckCircle2, Link2, Upload, Trash2, Eye, X, FileText, ShieldCheck, Download, Printer } from "lucide-react";
+import { getProductName, type SupplierDocument } from "@/lib/gfi-dummy-data";
 import { useSession } from "@/components/ui/PermissionGuard";
-import { buildIngredientTraceabilityViewModel } from "@/lib/ingredient-traceability";
 import {
   Button,
   Card,
@@ -87,7 +85,21 @@ export default function SuppliersPage() {
   const [formCertifications, setFormCertifications] = useState("");
   const [formNextAction, setFormNextAction] = useState("");
   const [formIssues, setFormIssues] = useState("");
+  const [formContactPerson, setFormContactPerson] = useState("");
+  const [formAddress, setFormAddress] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formFax, setFormFax] = useState("");
+  const [formPhone, setFormPhone] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Supplier Document Upload states
+  const [isUploadDocModalOpen, setIsUploadDocModalOpen] = useState(false);
+  const [formDocTitle, setFormDocTitle] = useState("");
+  const [formDocType, setFormDocType] = useState<"Agreement" | "Declaration" | "Certificate" | "License" | "Audit Record">("Agreement");
+  const [formDocFileName, setFormDocFileName] = useState("");
+
+  // Supplier Document View state
+  const [viewingDoc, setViewingDoc] = useState<SupplierDocument | null>(null);
 
   const activeSupplierId = selectedSupplierId || currentSuppliers[0]?.id || "";
   const selectedSupplier = currentSuppliers.find((supplier) => supplier.id === activeSupplierId) ?? currentSuppliers[0];
@@ -112,27 +124,14 @@ export default function SuppliersPage() {
     );
   }, [currentProducts, selectedSupplier]);
 
-  const ingredientViewModel = useMemo(
-    () =>
-      buildIngredientTraceabilityViewModel({
-        products: currentProducts,
-        consignments: currentConsignments,
-        supplyChainNodes,
-        eudrFormRequests,
-        intermediaryDeclarationSubmissions,
-        farmerDeclarationSubmissions,
-        eudrEvidenceAttachments,
-      }),
-    [
-      currentConsignments,
-      currentProducts,
-      eudrEvidenceAttachments,
-      eudrFormRequests,
-      farmerDeclarationSubmissions,
-      intermediaryDeclarationSubmissions,
-      supplyChainNodes,
-    ],
-  );
+  useEffect(() => {
+    if (selectedSupplier) {
+      document.title = `${selectedSupplier.name} | Suppliers | GFI Compliance Control Center`;
+    } else {
+      document.title = `Suppliers | GFI Compliance Control Center`;
+    }
+  }, [selectedSupplier]);
+
 
   const handleRequestOutreach = () => {
     if (!selectedSupplier) return;
@@ -229,6 +228,11 @@ export default function SuppliersPage() {
     setFormCertifications("");
     setFormNextAction("");
     setFormIssues("");
+    setFormContactPerson("");
+    setFormAddress("");
+    setFormEmail("");
+    setFormFax("");
+    setFormPhone("");
     setEditingId(null);
   };
 
@@ -248,8 +252,13 @@ export default function SuppliersPage() {
     setFormRisk(selectedSupplier.latestRiskLevel as typeof formRisk);
     setFormFacilities(selectedSupplier.facilities.join(", "));
     setFormCertifications(selectedSupplier.certifications.join(", "));
-    setFormNextAction(selectedSupplier.nextAction);
+    setFormNextAction(selectedSupplier.nextAction || "");
     setFormIssues(selectedSupplier.issues.join("\n"));
+    setFormContactPerson(selectedSupplier.contactPerson || "");
+    setFormAddress(selectedSupplier.address || "");
+    setFormEmail(selectedSupplier.email || "");
+    setFormFax(selectedSupplier.fax || "");
+    setFormPhone(selectedSupplier.phone || "");
     setIsEditModalOpen(true);
   };
 
@@ -263,7 +272,7 @@ export default function SuppliersPage() {
       country: formCountry,
       supplierType: formType,
       tier: Number(formTier),
-      commodities: formCommodities as any[],
+      commodities: isEdit && selectedSupplier ? selectedSupplier.commodities : [],
       onboardingStatus: formOnboarding,
       declarationStatus: formDeclaration,
       cocStatus: formCoc,
@@ -277,6 +286,11 @@ export default function SuppliersPage() {
       nextAction: formNextAction || "No immediate action required.",
       linkedProductIds: isEdit && selectedSupplier ? selectedSupplier.linkedProductIds : [],
       linkedConsignmentIds: isEdit && selectedSupplier ? selectedSupplier.linkedConsignmentIds : [],
+      contactPerson: formContactPerson,
+      address: formAddress,
+      email: formEmail,
+      fax: formFax,
+      phone: formPhone,
     };
 
     if (isEdit) {
@@ -294,38 +308,89 @@ export default function SuppliersPage() {
     setFormCommodities((prev) => (prev.includes(commodity) ? prev.filter((value) => value !== commodity) : [...prev, commodity]));
   };
 
+  const handleOpenUploadDoc = () => {
+    setFormDocTitle("");
+    setFormDocType("Agreement");
+    setFormDocFileName("");
+    setIsUploadDocModalOpen(true);
+  };
+
+  const handleSaveUploadDoc = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSupplier || !formDocTitle.trim() || !formDocFileName) return;
+
+    const newDoc = {
+      id: `doc-${Date.now()}`,
+      name: formDocTitle,
+      type: formDocType,
+      fileName: formDocFileName,
+      uploadDate: new Date().toISOString().split("T")[0],
+      size: "1.5 MB"
+    };
+
+    const updatedDocs = [...(selectedSupplier.documents || []), newDoc];
+
+    editSupplier({
+      ...selectedSupplier,
+      documents: updatedDocs
+    });
+
+    setIsUploadDocModalOpen(false);
+  };
+
+  const handleDeleteDoc = (docId: string) => {
+    if (!selectedSupplier) return;
+    const updatedDocs = (selectedSupplier.documents || []).filter((doc) => doc.id !== docId);
+    editSupplier({
+      ...selectedSupplier,
+      documents: updatedDocs
+    });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormDocFileName(file.name);
+      if (!formDocTitle.trim()) {
+        const cleanName = file.name
+          .replace(/\.[^/.]+$/, "")
+          .split(/[-_]+/)
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+        setFormDocTitle(cleanName);
+      }
+    }
+  };
+
   return (
     <div className="flex w-full flex-col gap-6">
       <SectionHeader
-        title="Supplier Compliance"
+        title="Supplier Management"
         description="Review supplier status, declarations, CoC evidence, contract posture, geolocation coverage, and export impact."
         actions={
-          <div className="flex items-center gap-2">
-            {selectedSupplier ? <Tag tone="brand">{selectedSupplier.name}</Tag> : null}
-            <Button
-              size="sm"
-              icon={<Plus className="h-4 w-4" aria-hidden="true" />}
-              onClick={() => {
-                resetForm();
-                setIsAddModalOpen(true);
-              }}
-            >
-              Add Supplier
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+            onClick={() => {
+              resetForm();
+              setIsAddModalOpen(true);
+            }}
+          >
+            Add Supplier
+          </Button>
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
-        <Card className="space-y-4 border-border-strong/70 bg-gradient-to-b from-bg-surface to-bg-surface-alt lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border-soft/80 pb-3">
+        <Card className="flex flex-col border-border-strong/70 bg-gradient-to-b from-bg-surface to-bg-surface-alt lg:sticky lg:top-6 lg:self-start lg:h-[calc(100vh-8rem)] lg:max-h-[calc(100vh-8rem)] lg:overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-border-soft/80 pb-3 shrink-0 mb-3">
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-brand-primary">Suppliers</h2>
               <p className="text-xs text-text-secondary">Select a supplier to review profile and requests</p>
             </div>
             <Tag tone="neutral">{currentSuppliers.length}</Tag>
           </div>
-          <div className="space-y-3 lg:overflow-y-auto lg:pr-1">
+          <div className="flex-1 min-h-0 space-y-3 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1 internal-scroll internal-scroll--main">
             {currentSuppliers.map((supplier) => {
               const active = selectedSupplier?.id === supplier.id;
               return (
@@ -337,21 +402,19 @@ export default function SuppliersPage() {
                     setEmailStatus(null);
                   }}
                   className={[
-                    "group w-full rounded-lg border p-4 text-left transition-all duration-200 ease-emphasized",
+                    "group w-full rounded-lg border p-4 text-left transition-all duration-200 ease-emphasized min-w-0 overflow-hidden",
                     active
                       ? "border-brand-accent bg-brand-accent-soft/90 shadow-card"
                       : "border-border-soft bg-bg-surface hover:-translate-y-0.5 hover:border-border-strong hover:bg-bg-surface-alt hover:shadow-card",
                   ].join(" ")}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <strong className="text-sm text-brand-primary transition-colors group-hover:text-brand-primary-dark">{supplier.name}</strong>
-                    <StatusBadge status={toStatusTone(supplier.onboardingStatus)}>{humanize(supplier.onboardingStatus)}</StatusBadge>
+                  <div className="min-w-0 w-full">
+                    <strong className="text-sm text-brand-primary transition-colors group-hover:text-brand-primary-dark truncate block" title={supplier.name}>
+                      {supplier.name}
+                    </strong>
                   </div>
-                  <p className="mt-2 text-xs font-medium text-text-secondary">
+                  <p className="mt-1.5 text-xs font-medium text-text-secondary truncate" title={`${supplier.supplierType} | Tier ${supplier.tier} | ${supplier.country}`}>
                     {supplier.supplierType} | Tier {supplier.tier} | {supplier.country}
-                  </p>
-                  <p className="mt-1 text-xs text-text-secondary/90">
-                    Geolocation coverage {supplier.geolocationCoverage}% | CoC {humanize(supplier.cocStatus)}
                   </p>
                 </button>
               );
@@ -381,49 +444,137 @@ export default function SuppliersPage() {
                     Edit
                   </Button>
                 </div>
-                <p className="text-sm leading-6 text-text-secondary">{selectedSupplier.nextAction}</p>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <div>
-                    <p className="text-xs text-text-secondary">Supplier type</p>
+                    <p className="text-xs text-text-secondary">Supplier Type</p>
                     <strong className="text-sm text-text-primary">{selectedSupplier.supplierType}</strong>
                   </div>
                   <div>
-                    <p className="text-xs text-text-secondary">Latest risk</p>
-                    <RiskBadge risk={toRiskTone(selectedSupplier.latestRiskLevel)}>{selectedSupplier.latestRiskLevel}</RiskBadge>
+                    <p className="text-xs text-text-secondary">Origin Country</p>
+                    <strong className="text-sm text-text-primary">{selectedSupplier.country}</strong>
                   </div>
                   <div>
-                    <p className="text-xs text-text-secondary">Declaration</p>
-                    <strong className="text-sm text-text-primary">{humanize(selectedSupplier.declarationStatus)}</strong>
+                    <p className="text-xs text-text-secondary">Onboarding Tier</p>
+                    <strong className="text-sm text-text-primary">Tier {selectedSupplier.tier} ({selectedSupplier.tier === 1 ? "Direct" : selectedSupplier.tier === 2 ? "Indirect" : "Sub-Tier"})</strong>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 border-t border-border-soft/60 pt-4 mt-2">
+                  <div>
+                    <p className="text-xs text-text-secondary">Contact Person</p>
+                    <strong className="text-sm text-text-primary">{selectedSupplier.contactPerson || "Not Declared"}</strong>
                   </div>
                   <div>
-                    <p className="text-xs text-text-secondary">Contract posture</p>
-                    <strong className="text-sm text-text-primary">{humanize(selectedSupplier.contractStatus)}</strong>
+                    <p className="text-xs text-text-secondary">Email</p>
+                    <strong className="text-sm text-text-primary">{selectedSupplier.email || "Not Declared"}</strong>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-secondary">Contact No</p>
+                    <strong className="text-sm text-text-primary">{selectedSupplier.phone || "Not Declared"}</strong>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-secondary">Fax</p>
+                    <strong className="text-sm text-text-primary">{selectedSupplier.fax || "Not Declared"}</strong>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-text-secondary">Address</p>
+                    <strong className="text-sm text-text-primary block truncate max-w-full" title={selectedSupplier.address}>{selectedSupplier.address || "Not Declared"}</strong>
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-3">
-                <Card variant="inset" className="space-y-1 p-4">
-                  <p className="text-xs text-text-secondary">Facilities</p>
-                  <strong className="text-sm text-text-primary">{selectedSupplier.facilities.length > 0 ? selectedSupplier.facilities.join(", ") : "None declared"}</strong>
-                </Card>
-                <Card variant="inset" className="space-y-1 p-4">
-                  <p className="text-xs text-text-secondary">Certifications</p>
-                  <strong className="text-sm text-text-primary">{selectedSupplier.certifications.length > 0 ? selectedSupplier.certifications.join(", ") : "None declared"}</strong>
-                </Card>
-                <Card variant="inset" className="space-y-1 p-4">
-                  <p className="text-xs text-text-secondary">Evidence library</p>
-                  <strong className="text-sm text-text-primary">{selectedSupplier.evidenceCount} linked records</strong>
-                </Card>
-                {selectedSupplier.onboardingStatus !== "APPROVED" ? (
-                  <Button size="sm" onClick={handleRequestOutreach} icon={<Send className="h-4 w-4" aria-hidden="true" />} fullWidth>
-                    Request geolocation file
+              <Card className="flex flex-col h-full space-y-4">
+                <div className="flex items-center justify-between border-b border-border-soft pb-2">
+                  <h3 className="text-lg font-bold text-brand-primary">Supplier Documents</h3>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Upload className="h-4 w-4" aria-hidden="true" />}
+                    onClick={handleOpenUploadDoc}
+                  >
+                    Upload
                   </Button>
-                ) : null}
-                <Button size="sm" variant="secondary" onClick={handleOpenGenerateLinks} icon={<Link2 className="h-4 w-4" aria-hidden="true" />} fullWidth>
-                  Generate EUDR links
-                </Button>
-              </div>
+                </div>
+
+                <div className="flex-grow overflow-y-auto max-h-[280px] space-y-2 pr-1 min-h-[160px]">
+                  {!selectedSupplier.documents || selectedSupplier.documents.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-text-secondary">
+                      No documents uploaded yet. Click Upload to add agreements, declarations, certificates, licenses, or audits.
+                    </div>
+                  ) : (
+                    selectedSupplier.documents.map((doc) => {
+                      let typeColor = "border-l-[5px] border-l-blue-500/90 dark:border-l-blue-400/90";
+                      let typeLabelColor = "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]";
+                      if (doc.type === "Declaration") {
+                        typeColor = "border-l-[5px] border-l-emerald-500/90 dark:border-l-emerald-400/90";
+                        typeLabelColor = "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]";
+                      } else if (doc.type === "Certificate") {
+                        typeColor = "border-l-[5px] border-l-violet-500/90 dark:border-l-violet-400/90";
+                        typeLabelColor = "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]";
+                      } else if (doc.type === "License") {
+                        typeColor = "border-l-[5px] border-l-amber-500/90 dark:border-l-amber-400/90";
+                        typeLabelColor = "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]";
+                      } else if (doc.type === "Audit Record") {
+                        typeColor = "border-l-[5px] border-l-rose-500/90 dark:border-l-rose-400/90";
+                        typeLabelColor = "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]";
+                      }
+
+                      return (
+                        <div
+                          key={doc.id}
+                          className={`flex items-center justify-between gap-3 p-3.5 rounded-xl border-y border-r border-border-soft bg-white dark:bg-bg-surface shadow-[0_2px_6px_rgba(0,0,0,0.02)] hover:shadow hover:bg-bg-surface-alt transition-all duration-200 ease-in-out ${typeColor}`}
+                        >
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${typeLabelColor}`}>
+                                {doc.type}
+                              </span>
+                              <span className="text-[10px] font-semibold text-text-muted">
+                                {doc.uploadDate} | {doc.size || "1.5 MB"}
+                              </span>
+                            </div>
+                            <strong className="block truncate text-sm text-text-primary font-bold" title={doc.name}>
+                              {doc.name}
+                            </strong>
+                            <span className="block truncate text-xs text-text-secondary font-medium italic">
+                              {doc.fileName}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setViewingDoc(doc)}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-brand-primary hover:bg-brand-accent-soft/30 transition-all duration-150"
+                              title="Open Document"
+                            >
+                              <Eye className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDoc(doc.id)}
+                              className="p-1.5 rounded-lg text-text-muted hover:text-state-danger hover:bg-state-danger/10 transition-all duration-150"
+                              title="Delete Document"
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="pt-2 space-y-2 border-t border-border-soft/60">
+                  {selectedSupplier.onboardingStatus !== "APPROVED" ? (
+                    <Button size="sm" onClick={handleRequestOutreach} icon={<Send className="h-4 w-4" aria-hidden="true" />} fullWidth>
+                      Request geolocation file
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="secondary" onClick={handleOpenGenerateLinks} icon={<Link2 className="h-4 w-4" aria-hidden="true" />} fullWidth>
+                    Generate EUDR links
+                  </Button>
+                </div>
+              </Card>
             </Card>
 
             <Card className="space-y-4">
@@ -431,7 +582,7 @@ export default function SuppliersPage() {
               {selectedSupplierRequests.length === 0 ? (
                 <p className="text-sm text-text-secondary">No multi-tier EUDR request has been generated for this supplier yet.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="overflow-y-auto max-h-[380px] space-y-3 pr-1">
                   {selectedSupplierRequests.map((request) => {
                     const node = supplyChainNodes.find((item) => item.id === request.targetNodeId);
                     const portalUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${request.tokenLabel}`;
@@ -480,41 +631,6 @@ export default function SuppliersPage() {
               )}
             </Card>
 
-            <Card className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-lg font-bold text-brand-primary">Supply Chain Snapshot</h3>
-                {selectedSupplierNodes.length > 0
-                  ? (() => {
-                      const leafNodes = supplyChainNodes.filter(
-                        (node) =>
-                          ["FARMER", "COOPERATIVE", "ESTATE"].includes(node.actorType) &&
-                          selectedSupplierNodes.some((target) => {
-                            let current: typeof node | undefined = node;
-                            while (current) {
-                              if (current.id === target.id) return true;
-                              current = supplyChainNodes.find((parent) => parent.id === current?.parentNodeId);
-                            }
-                            return false;
-                          }),
-                      );
-                      const completeFarmers = leafNodes.filter((node) => node.status === "COMPLETE").length;
-                      const maxTier = Math.max(
-                        ...selectedSupplierNodes.map((node) => node.tier),
-                        ...supplyChainNodes
-                          .filter((node) => selectedSupplierNodes.some((selectedNode) => node.ingredientId === selectedNode.ingredientId))
-                          .map((node) => node.tier),
-                      );
-                      return (
-                        <Tag tone="neutral">
-                          Depth: Tier 1 {"->"} Tier {maxTier || 1}
-                          {leafNodes.length > 0 ? ` | Farmers: ${completeFarmers}/${leafNodes.length}` : ""}
-                        </Tag>
-                      );
-                    })()
-                  : null}
-              </div>
-              <SupplyChainSnapshot viewModel={ingredientViewModel} supplierId={selectedSupplier.id} />
-            </Card>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="space-y-4">
@@ -613,14 +729,23 @@ export default function SuppliersPage() {
       </div>
 
       {(isAddModalOpen || isEditModalOpen) ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAddModalOpen(false);
+              setIsEditModalOpen(false);
+              resetForm();
+            }
+          }}
+        >
           <Card className="max-h-[90vh] w-full max-w-3xl overflow-y-auto p-6">
             <div className="space-y-1">
               <h2 className="text-xl font-extrabold text-brand-primary">
                 {isEditModalOpen ? "Edit Supplier Record" : "Add New Supplier"}
               </h2>
               <p className="text-xs text-text-secondary">
-                Provide supplier identity, compliance posture status, and risk vectors to calculate downstream eligibility.
+                Provide supplier identity, contact credentials, and linked commodities to build the traceability profile.
               </p>
             </div>
 
@@ -653,96 +778,34 @@ export default function SuppliersPage() {
                 </div>
               </div>
 
-              <Card variant="inset" className="space-y-2 p-3">
-                <label className="text-sm font-semibold text-text-secondary">Linked Commodities</label>
-                <div className="flex flex-wrap gap-4 text-sm text-brand-primary">
-                  <label className="inline-flex cursor-pointer items-center gap-2">
-                    <input type="checkbox" checked={formCommodities.includes("PALM")} onChange={() => handleCommodityToggle("PALM")} className="h-4 w-4 accent-brand-accent" />
-                    Palm Oil (PALM)
-                  </label>
-                  <label className="inline-flex cursor-pointer items-center gap-2">
-                    <input type="checkbox" checked={formCommodities.includes("COCOA")} onChange={() => handleCommodityToggle("COCOA")} className="h-4 w-4 accent-brand-accent" />
-                    Cocoa Products (COCOA)
-                  </label>
-                </div>
-              </Card>
-
-              <div className="grid gap-4 md:grid-cols-2">
+              {/* Contact Information Fields (Requested via Screenshot) */}
+              <div className="grid gap-4 md:grid-cols-2 border-t border-border-soft/60 pt-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Onboarding Status</label>
-                  <Select value={formOnboarding} onChange={(e) => setFormOnboarding(e.target.value as typeof formOnboarding)}>
-                    <option value="APPROVED">APPROVED</option>
-                    <option value="UNDER_REVIEW">UNDER REVIEW</option>
-                    <option value="PENDING_RESPONSE">PENDING RESPONSE</option>
-                    <option value="CHANGES_REQUESTED">CHANGES REQUESTED</option>
-                    <option value="BLOCKED">BLOCKED</option>
-                  </Select>
+                  <label className="text-sm font-semibold text-text-secondary">Contact Person</label>
+                  <Input value={formContactPerson} onChange={(e) => setFormContactPerson(e.target.value)} placeholder="e.g. John Doe" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">EUDR Declaration Posture</label>
-                  <Select value={formDeclaration} onChange={(e) => setFormDeclaration(e.target.value as typeof formDeclaration)}>
-                    <option value="SIGNED">SIGNED & VERIFIED</option>
-                    <option value="UNDER_REVIEW">UNDER REVIEW</option>
-                    <option value="REQUESTED">REQUESTED</option>
-                    <option value="MISSING">MISSING</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">CoC Verification State</label>
-                  <Select value={formCoc} onChange={(e) => setFormCoc(e.target.value as typeof formCoc)}>
-                    <option value="VERIFIED">VERIFIED (Full IP/SG)</option>
-                    <option value="MSDS_ONLY">MSDS ONLY</option>
-                    <option value="UNDER_REVIEW">UNDER REVIEW</option>
-                    <option value="MISSING">MISSING</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Geolocation Mapping Coverage (%)</label>
-                  <Input type="number" min={0} max={100} required value={formGeoCoverage} onChange={(e) => setFormGeoCoverage(Number(e.target.value))} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Contract Clause Posture</label>
-                  <Select value={formContract} onChange={(e) => setFormContract(e.target.value as typeof formContract)}>
-                    <option value="EUDR_CLAUSE_PRESENT">EUDR CLAUSE PRESENT</option>
-                    <option value="LEGACY_CONTRACT">LEGACY CONTRACT (No Explicit Clause)</option>
-                    <option value="MISSING">MISSING CONTRACT</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Latest Composite Risk Level</label>
-                  <Select value={formRisk} onChange={(e) => setFormRisk(e.target.value as typeof formRisk)}>
-                    <option value="LOW">LOW RISK</option>
-                    <option value="MEDIUM">MEDIUM RISK</option>
-                    <option value="HIGH">HIGH RISK</option>
-                    <option value="CRITICAL">CRITICAL RISK</option>
-                  </Select>
+                  <label className="text-sm font-semibold text-text-secondary">Supplier Email</label>
+                  <Input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="e.g. contact@supplier.com" />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Facilities List (comma-separated)</label>
-                <Input value={formFacilities} onChange={(e) => setFormFacilities(e.target.value)} placeholder="e.g. Sumatra milling center, Medan warehouse" />
+              <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-text-secondary">Supplier Address</label>
+                  <Input value={formAddress} onChange={(e) => setFormAddress(e.target.value)} placeholder="e.g. Suite 3A, Level 10, Menara Cargill, Malaysia" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-text-secondary">Contact No</label>
+                  <Input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="e.g. 0300-8445013" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-text-secondary">Fax</label>
+                  <Input value={formFax} onChange={(e) => setFormFax(e.target.value)} placeholder="e.g. +60 3 1234 5678" />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Certifications (comma-separated)</label>
-                <Input value={formCertifications} onChange={(e) => setFormCertifications(e.target.value)} placeholder="e.g. RSPO BVC-MY-991, Rainforest Alliance 801" />
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Active Blockers / Grievance Issues (one issue per line)</label>
-                <Textarea
-                  value={formIssues}
-                  onChange={(e) => setFormIssues(e.target.value)}
-                  className="min-h-[96px] resize-y"
-                  placeholder={"e.g. Missing geolocation polygon shapefiles\nLegacy contract needs legal EUDR amendment"}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Next Action Directive</label>
-                <Input value={formNextAction} onChange={(e) => setFormNextAction(e.target.value)} placeholder="e.g. Request coordinates from smallholders group leader." />
-              </div>
 
               <div className="flex justify-end gap-3 pt-2">
                 <Button
@@ -764,7 +827,12 @@ export default function SuppliersPage() {
       ) : null}
 
       {isLinkModalOpen ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsLinkModalOpen(false);
+          }}
+        >
           <Card className="w-full max-w-3xl p-6">
             <div className="space-y-1">
               <h2 className="text-xl font-extrabold text-brand-primary">Generate Ingredient-Scoped EUDR Links</h2>
@@ -800,6 +868,220 @@ export default function SuppliersPage() {
               </Button>
               <Button type="button" onClick={handleGenerateScopedLinks}>
                 Generate Links
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {isUploadDocModalOpen ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsUploadDocModalOpen(false);
+          }}
+        >
+          <Card className="w-full max-w-lg p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="space-y-1">
+              <h2 className="text-xl font-extrabold text-brand-primary">Upload Supplier Document</h2>
+              <p className="text-xs text-text-secondary">
+                Upload legal, regulatory, or operational documentation for this supplier.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveUploadDoc} className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-text-secondary">Document Title</label>
+                <Input
+                  required
+                  value={formDocTitle}
+                  onChange={(e) => setFormDocTitle(e.target.value)}
+                  placeholder="e.g. Sumatra Palm Oil Supply Agreement"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-text-secondary">Document Type</label>
+                <Select
+                  value={formDocType}
+                  onChange={(e) => setFormDocType(e.target.value as any)}
+                >
+                  <option value="Agreement">Agreement</option>
+                  <option value="Declaration">Declaration</option>
+                  <option value="Certificate">Certificate</option>
+                  <option value="License">License</option>
+                  <option value="Audit Record">Audit Record</option>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-text-secondary">Document File</label>
+                <div
+                  onClick={() => document.getElementById("supplier-doc-file-input")?.click()}
+                  className="flex flex-col items-center justify-center border-2 border-dashed border-border-strong/70 hover:border-brand-primary rounded-xl p-6 bg-bg-surface-alt hover:bg-brand-accent-soft/20 cursor-pointer transition-all duration-150 text-center"
+                >
+                  <input
+                    type="file"
+                    id="supplier-doc-file-input"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    onChange={handleFileChange}
+                  />
+                  <Upload className="h-8 w-8 text-brand-primary/60 mb-2" />
+                  <p className="text-sm font-bold text-brand-primary">
+                    {formDocFileName ? "File Selected" : "Click to select a file"}
+                  </p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {formDocFileName ? formDocFileName : "Supports PDF, DOCX, XLSX up to 10MB"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setIsUploadDocModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!formDocFileName}>
+                  Upload Document
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      ) : null}
+
+      {viewingDoc ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setViewingDoc(null);
+          }}
+        >
+          <Card className="w-full max-w-2xl overflow-hidden p-0 bg-white dark:bg-bg-surface shadow-2xl border border-border-soft rounded-2xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-border-soft p-5 bg-bg-surface-alt">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-brand-accent-soft/20 text-brand-primary">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-extrabold text-brand-primary leading-tight">
+                    {viewingDoc.name}
+                  </h2>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    {viewingDoc.fileName} • {viewingDoc.size || "1.5 MB"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingDoc(null)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-surface-hover transition-all duration-150"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto bg-slate-50/50 dark:bg-bg-surface/30">
+              {/* Document Info Grid */}
+              <div className="grid grid-cols-2 gap-4 bg-white dark:bg-bg-surface border border-border-soft p-4 rounded-xl shadow-sm">
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary">Document Type</span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold border uppercase tracking-wider shadow-sm ${
+                    viewingDoc.type === "Declaration"
+                      ? "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]"
+                      : viewingDoc.type === "Certificate"
+                      ? "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]"
+                      : viewingDoc.type === "License"
+                      ? "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]"
+                      : viewingDoc.type === "Audit Record"
+                      ? "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]"
+                      : "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]"
+                  }`}>
+                    {viewingDoc.type}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary">Verification Status</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Verified Active
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary">Uploaded Date</span>
+                  <span className="block mt-0.5 text-sm font-semibold text-text-primary">{viewingDoc.uploadDate}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary">Assigned Supplier</span>
+                  <span className="block mt-0.5 text-sm font-semibold text-text-primary">{selectedSupplier.name}</span>
+                </div>
+              </div>
+
+              {/* Simulated Document Sheet */}
+              <div className="relative border border-border-soft bg-white dark:bg-bg-surface-alt rounded-xl p-6 shadow-sm overflow-hidden min-h-[220px]">
+                {/* Decorative Stamp watermark */}
+                <div className="absolute right-4 top-4 select-none opacity-[0.08] dark:opacity-[0.15] pointer-events-none transform rotate-12">
+                  <ShieldCheck className="h-36 w-36 text-brand-primary" />
+                </div>
+
+                <div className="relative z-10 space-y-4">
+                  <div className="flex items-center justify-between border-b border-border-soft/60 pb-3">
+                    <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">EUDR Compliance Evidence</span>
+                    <span className="text-xs font-mono text-text-muted">REF: {`EUDR-${viewingDoc.id.replace("doc-", "").substring(0, 8).toUpperCase()}`}</span>
+                  </div>
+
+                  <div className="space-y-3 text-xs leading-relaxed text-text-primary/95">
+                    <p className="font-semibold text-text-primary">To Whom It May Concern,</p>
+                    <p>
+                      This certificate serves as official verification that the production, processing, and distribution procedures carried out by <strong className="text-brand-primary">{selectedSupplier.name}</strong> for all listed shipments are fully compliant with the requirements of the <strong>European Union Deforestation Regulation (EUDR, Regulation (EU) 2023/1115)</strong>.
+                    </p>
+                    <p>
+                      The undersigned verifies that all raw materials supplied are traceable to forest-deforestation-free plots established prior to December 31, 2020, and conform strictly with relevant local legislation governing land use, environmental preservation, and labor rights.
+                    </p>
+                    <p className="pt-2 text-[11px] text-text-secondary font-medium font-sans">
+                      Traceability Checksums, Polygon Mapping Records, and Chain-of-Custody (CoC) audit trail attachments are archived within the FOS Evidence library index.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-border-soft p-4 bg-bg-surface-alt">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={<Download className="h-4 w-4" />}
+                onClick={() => {
+                  alert(`Simulating file download: ${viewingDoc.fileName}`);
+                }}
+              >
+                Download File
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={<Printer className="h-4 w-4" />}
+                onClick={() => {
+                  alert("Simulating printing document audit record.");
+                }}
+              >
+                Print Record
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setViewingDoc(null)}
+              >
+                Close Preview
               </Button>
             </div>
           </Card>

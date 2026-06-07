@@ -2,12 +2,11 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useSession } from '@/components/ui/PermissionGuard'
-import { AppTopbar, Button, DevelopedByFooter } from '@/components/ui'
+import { AppTopbar, Button } from '@/components/ui'
 import {
   Boxes,
-  ClipboardCheck,
   FileText,
   LayoutDashboard,
   MapPinned,
@@ -15,12 +14,13 @@ import {
   PackageCheck,
   PanelLeftClose,
   Plug,
-  ShieldAlert,
+  ShieldCheck,
   Trees,
   Truck,
   UserCheck,
   Users,
   Workflow,
+  Loader2,
 } from 'lucide-react'
 import Image from 'next/image'
 import type { LucideIcon } from 'lucide-react'
@@ -39,26 +39,22 @@ export default function InternalLayout({
   children: React.ReactNode
 }>) {
   const pathname = usePathname()
-  const { session } = useSession()
+  const router = useRouter()
+  const { accountProfile, isHydrated, logout, session } = useSession()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-
-  const user = session?.user
 
   const navigationItems: NavigationItem[] = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Suppliers', path: '/suppliers', icon: Users },
     { name: 'Products & BOM', path: '/products', icon: Boxes },
-    { name: 'Geolocation Review', path: '/geolocation', icon: MapPinned },
-    { name: 'Deforestation', path: '/deforestation', icon: Trees },
     { name: 'Traceability', path: '/traceability', icon: Workflow },
     { name: 'Consignments', path: '/consignments', icon: Truck },
-    { name: 'Risk', path: '/risk-assessment', icon: ShieldAlert },
+    { name: 'EUDR Compliance', path: '/eudr-compliance', icon: ShieldCheck },
     { name: 'Documents', path: '/documents', icon: FileText },
-    { name: 'Outputs', path: '/outputs', icon: PackageCheck },
     { name: 'EU Agents', path: '/agents', icon: UserCheck },
-    { name: 'Concerns', path: '/upstream', icon: MessageSquareWarning },
+    { name: 'Outputs', path: '/outputs', icon: PackageCheck },
     { name: 'Integration', path: '/integration', icon: Plug },
-    { name: 'Audit & Reporting', path: '/audit', icon: ClipboardCheck },
+    { name: 'Concerns', path: '/upstream', icon: MessageSquareWarning },
   ]
 
   useEffect(() => {
@@ -72,12 +68,55 @@ export default function InternalLayout({
     window.localStorage.setItem(SIDEBAR_STORAGE_KEY, isSidebarCollapsed ? 'true' : 'false')
   }, [isSidebarCollapsed])
 
+  useEffect(() => {
+    document.documentElement.style.setProperty('--platform-sidebar-width', isSidebarCollapsed ? '64px' : '280px')
+    return () => {
+      document.documentElement.style.removeProperty('--platform-sidebar-width')
+    }
+  }, [isSidebarCollapsed])
+
+  useEffect(() => {
+    if (isHydrated && !session?.user) {
+      router.replace('/')
+    }
+  }, [isHydrated, router, session])
+
+  useEffect(() => {
+    const activeNav = navigationItems.find(
+      (item) => pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path))
+    );
+    const titleSuffix = "GFI Compliance Control Center";
+    if (pathname === '/profile') {
+      document.title = `Profile | ${titleSuffix}`;
+    } else if (activeNav) {
+      document.title = `${activeNav.name} | ${titleSuffix}`;
+    } else {
+      document.title = titleSuffix;
+    }
+  }, [pathname]);
+
+  if (!isHydrated || !session?.user) {
+    return (
+      <div className="flex h-[calc(100dvh-var(--platform-footer-height))] items-center justify-center bg-bg-page text-brand-primary">
+        <div className="flex items-center gap-3 text-sm font-semibold">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+          Loading secure workspace...
+        </div>
+      </div>
+    )
+  }
+
   const toggleSidebar = () => {
     setIsSidebarCollapsed((prev) => !prev)
   }
 
   const activeNav = navigationItems.find((item) => pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path)))
-  const breadcrumbs = activeNav ? ["Workspace", activeNav.name] : ["Workspace"]
+  const breadcrumbs = pathname === '/profile' ? ['Profile'] : activeNav ? [activeNav.name] : []
+
+  const handleLogout = () => {
+    logout()
+    router.replace('/')
+  }
 
   return (
     <div className={[
@@ -168,30 +207,9 @@ export default function InternalLayout({
           })}
         </nav>
 
-        <div className="pt-5">
-          {isSidebarCollapsed ? (
-            <div className="flex justify-center">
-              <div
-                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 mx-auto"
-                title="Developed by Fruit of Sustainability"
-                aria-label="Developed by Fruit of Sustainability"
-              >
-                <Image
-                  src="/fos_square_logo.png"
-                  alt="Fruit of Sustainability logo"
-                  width={26}
-                  height={26}
-                  className="h-[26px] w-[26px] object-contain"
-                />
-              </div>
-            </div>
-          ) : (
-            <DevelopedByFooter className="border-white/10 bg-white/5 text-white/80" />
-          )}
-        </div>
       </aside>
 
-      <div className="flex h-screen min-h-0 flex-col overflow-hidden">
+      <div className="flex h-[calc(100dvh-var(--platform-footer-height))] min-h-0 flex-col overflow-hidden">
         <AppTopbar
           variant="internal"
           microLabel="Compliance Suite"
@@ -200,8 +218,11 @@ export default function InternalLayout({
           breadcrumbs={breadcrumbs}
           posture="monitoring_active"
           notificationCount={2}
-          userName={user?.name ?? "Operator"}
-          userRole="Compliance Officer"
+          userName={session.user.name}
+          userInitials="GF"
+          userRole={accountProfile.jobTitle}
+          profileHref="/profile"
+          onLogout={handleLogout}
         />
 
         <main className="internal-scroll internal-scroll--main flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-8">

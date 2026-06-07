@@ -499,7 +499,15 @@ export default function AgentsPage() {
 
       {/* Add / Edit Agent Modal */}
       {(isAddModalOpen || isEditModalOpen) && (
-        <div style={{
+        <div
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAddModalOpen(false);
+              setIsEditModalOpen(false);
+              resetForm();
+            }
+          }}
+          style={{
           position: "fixed",
           top: 0,
           left: 0,

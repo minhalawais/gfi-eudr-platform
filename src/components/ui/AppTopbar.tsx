@@ -1,6 +1,8 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
-import { Bell, ChevronDown, CircleAlert, CircleCheckBig, ShieldAlert, Search } from "lucide-react";
+import { Bell, ChevronDown, CircleAlert, CircleCheckBig, LogOut, Search, ShieldAlert, UserRound } from "lucide-react";
 import { BrandLockup } from "./Branding";
 import { Tag } from "./Tag";
 import type { TagProps } from "./Tag";
@@ -16,7 +18,10 @@ type InternalTopbarProps = {
   posture: TopbarPosture;
   notificationCount?: number;
   userName?: string;
+  userInitials?: string;
   userRole?: string;
+  profileHref: string;
+  onLogout: () => void;
 };
 
 type PortalTopbarProps = {
@@ -47,6 +52,36 @@ function postureMeta(posture: TopbarPosture) {
 }
 
 export function AppTopbar(props: AppTopbarProps) {
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = React.useState(false);
+  const accountMenuRef = React.useRef<HTMLDivElement>(null);
+  const accountTriggerRef = React.useRef<HTMLButtonElement>(null);
+  const profileLinkRef = React.useRef<HTMLAnchorElement>(null);
+
+  React.useEffect(() => {
+    if (!isAccountMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsAccountMenuOpen(false);
+        accountTriggerRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    const focusFrame = window.requestAnimationFrame(() => profileLinkRef.current?.focus());
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAccountMenuOpen]);
+
   if (props.variant === "portal") {
     const isRtl = props.locale === "ar" || props.locale === "ur";
     return (
@@ -95,18 +130,17 @@ export function AppTopbar(props: AppTopbarProps) {
   return (
     <header className="sticky top-0 z-20 h-14 border-b border-border-soft/60 bg-bg-surface/85 backdrop-blur-md">
       <div className="mx-auto flex h-full items-center justify-between px-4 md:px-6">
-        
+
         {/* LEFT: Context Breadcrumbs (Highly compact, replaces bulky titles) */}
         <div className="flex items-center gap-1.5 min-w-0">
           {props.breadcrumbs && props.breadcrumbs.length > 0 ? (
             props.breadcrumbs.map((crumb, idx) => (
               <React.Fragment key={crumb}>
                 {idx > 0 && <span className="text-text-muted/40 text-[10px] font-medium font-sans">/</span>}
-                <span className={`text-[11px] font-bold tracking-wide font-sans truncate ${
-                  idx === props.breadcrumbs!.length - 1 
-                    ? "text-brand-primary" 
+                <span className={`text-[11px] font-bold tracking-wide font-sans truncate ${idx === props.breadcrumbs!.length - 1
+                    ? "text-brand-primary"
                     : "text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-                }`}>
+                  }`}>
                   {crumb}
                 </span>
               </React.Fragment>
@@ -134,11 +168,11 @@ export function AppTopbar(props: AppTopbarProps) {
 
         {/* RIGHT: Compact control actions grouped seamlessly */}
         <div className="flex items-center gap-3">
-          
+
           {/* Posture Badge Pill */}
           <div className="flex items-center gap-1.5 rounded-full border border-border-soft bg-bg-page/60 py-1 pl-2.5 pr-3 text-[10px] font-bold text-text-primary">
             <span className={`h-1.5 w-1.5 rounded-full ${meta.tone} animate-pulse`} />
-            <span className="text-text-secondary">System: {meta.label}</span>
+            <span className="text-text-secondary">API: {meta.label}</span>
           </div>
 
           <div className="h-4 w-px bg-border-soft" />
@@ -155,20 +189,73 @@ export function AppTopbar(props: AppTopbarProps) {
             ) : null}
           </button>
 
-          {/* User Account Trigger */}
-          <button
-            type="button"
-            aria-label="Open account menu"
-            className="flex items-center gap-2 rounded-md p-1 transition hover:bg-bg-page"
-          >
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-brand-primary/10 text-[9px] font-extrabold text-brand-primary">
-              {props.userName?.substring(0, 2).toUpperCase() ?? "OP"}
-            </div>
-            <span className="hidden text-xs font-bold text-text-primary md:inline-block">
-              {props.userName ?? "Operator"}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 text-text-secondary" />
-          </button>
+          <div ref={accountMenuRef} className="relative">
+            <button
+              ref={accountTriggerRef}
+              type="button"
+              aria-label="Open account menu"
+              aria-haspopup="menu"
+              aria-expanded={isAccountMenuOpen}
+              aria-controls="account-menu"
+              onClick={() => setIsAccountMenuOpen((current) => !current)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setIsAccountMenuOpen(true);
+                }
+              }}
+              className="flex items-center gap-2 rounded-md p-1 transition hover:bg-bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-primary/10 text-[9px] font-extrabold text-brand-primary">
+                {props.userInitials ?? props.userName?.substring(0, 2).toUpperCase() ?? "OP"}
+              </div>
+              <span className="hidden max-w-44 truncate text-xs font-bold text-text-primary md:inline-block">
+                {props.userName ?? "Operator"}
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 text-text-secondary transition-transform ${isAccountMenuOpen ? "rotate-180" : ""}`}
+                aria-hidden="true"
+              />
+            </button>
+
+            {isAccountMenuOpen ? (
+              <div
+                id="account-menu"
+                role="menu"
+                aria-label="Account menu"
+                className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-lg border border-border-soft bg-bg-surface shadow-card-hover"
+              >
+                <div className="border-b border-border-soft bg-bg-surface-alt px-4 py-3">
+                  <p className="truncate text-sm font-bold text-text-primary">{props.userName ?? "Operator"}</p>
+                  <p className="mt-0.5 truncate text-xs text-text-secondary">{props.userRole ?? "Workspace user"}</p>
+                </div>
+                <div className="p-1.5">
+                  <Link
+                    ref={profileLinkRef}
+                    href={props.profileHref as any}
+                    role="menuitem"
+                    onClick={() => setIsAccountMenuOpen(false)}
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-semibold text-text-primary transition hover:bg-bg-surface-alt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+                  >
+                    <UserRound className="h-4 w-4 text-brand-primary" aria-hidden="true" />
+                    Profile
+                  </Link>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsAccountMenuOpen(false);
+                      props.onLogout();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-semibold text-state-error transition hover:bg-state-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-state-error"
+                  >
+                    <LogOut className="h-4 w-4" aria-hidden="true" />
+                    Log out
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>

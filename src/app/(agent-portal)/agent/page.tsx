@@ -3,13 +3,17 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "@/components/ui/PermissionGuard";
-import { BrandLockup, DevelopedByFooter } from "@/components/ui";
+import { BrandLockup } from "@/components/ui";
 import { getScenarioData, scenarioOptions, agents } from "@/lib/gfi-dummy-data";
 
 export default function EUAgentPortalPage() {
   const { scenarioId } = useSession();
   const scenarioData = getScenarioData(scenarioId);
   
+  useEffect(() => {
+    document.title = "EU Agent Portal | GFI Compliance Control Center";
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState("PKG-GFI-BBL-2026-001");
   const [hasSearched, setHasSearched] = useState(true);
 
@@ -48,7 +52,7 @@ export default function EUAgentPortalPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fos-bg-page)", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "calc(100dvh - var(--platform-footer-height))", paddingBottom: "var(--platform-footer-height)", background: "var(--fos-bg-page)", display: "flex", flexDirection: "column" }}>
       {/* Header with deep forest green gradient and HSL accents */}
       <header style={{
         background: "linear-gradient(135deg, var(--fos-primary) 0%, #001f16 100%)",
@@ -305,9 +309,6 @@ export default function EUAgentPortalPage() {
         ) : null}
       </main>
 
-      <footer className="mx-auto mb-6 w-full max-w-[1120px] px-8">
-        <DevelopedByFooter className="border-border-soft bg-bg-surface text-text-secondary" />
-      </footer>
     </div>
   );
 }

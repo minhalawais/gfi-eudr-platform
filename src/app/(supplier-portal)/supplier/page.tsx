@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
@@ -7,7 +7,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { AlertCircle, Check, FileText, HelpCircle, Info, MapPinned, Search } from "lucide-react";
 import Map, { Marker, NavigationControl } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { AppTopbar, DevelopedByFooter } from "@/components/ui";
+import { AppTopbar } from "@/components/ui";
 import {
   FarmerDeclarationSubmission,
   IntermediaryDeclarationSubmission,
@@ -519,6 +519,13 @@ const PORTAL_COPY: Record<SupportedLocale, Record<string, string>> = {
   },
 };
 
+interface SupplierPortalContentProps {
+  tokenOverride?: string;
+  mode?: "portal" | "internal";
+  onClose?: () => void;
+  onSave?: (message: string) => void;
+}
+
 function toggleArray(value: string, selected: string[]) {
   return selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
 }
@@ -561,37 +568,37 @@ function ensureIntermediaryUploads(form: IntermediaryFormState): IntermediaryFor
     headOfficeAddress: form.headOfficeAddress ?? "",
     section3Facilities:
       Array.isArray((form as unknown as { section3Facilities?: Section3FacilityRow[] }).section3Facilities) &&
-      (form as unknown as { section3Facilities?: Section3FacilityRow[] }).section3Facilities!.length === 3
+        (form as unknown as { section3Facilities?: Section3FacilityRow[] }).section3Facilities!.length === 3
         ? (form as unknown as { section3Facilities: Section3FacilityRow[] }).section3Facilities.map((row, index) => ({
-            siteNo: index + 1,
-            siteName: row.siteName ?? "",
-            fullAddress: row.fullAddress ?? "",
-            pinLocation: row.pinLocation ?? "",
-            facilityType: row.facilityType ?? "",
-            operationalStatus: row.operationalStatus ?? "",
-          }))
+          siteNo: index + 1,
+          siteName: row.siteName ?? "",
+          fullAddress: row.fullAddress ?? "",
+          pinLocation: row.pinLocation ?? "",
+          facilityType: row.facilityType ?? "",
+          operationalStatus: row.operationalStatus ?? "",
+        }))
         : defaultSection3Facilities(),
     section3LandDocs:
       Array.isArray((form as unknown as { section3LandDocs?: Section3LandDocRow[] }).section3LandDocs) &&
-      (form as unknown as { section3LandDocs?: Section3LandDocRow[] }).section3LandDocs!.length > 0
+        (form as unknown as { section3LandDocs?: Section3LandDocRow[] }).section3LandDocs!.length > 0
         ? (form as unknown as { section3LandDocs: Section3LandDocRow[] }).section3LandDocs.map((row, index) => ({
-            id: row.id ?? `land-doc-${index + 1}`,
-            documentType: row.documentType ?? defaultSection3LandDocs()[index]?.documentType ?? "",
-            existsYesNo: row.existsYesNo ?? "",
-            issuingAuthorityName: row.issuingAuthorityName ?? "",
-            attached: !!row.attached,
-            uploadedFiles: row.uploadedFiles ?? [],
-          }))
+          id: row.id ?? `land-doc-${index + 1}`,
+          documentType: row.documentType ?? defaultSection3LandDocs()[index]?.documentType ?? "",
+          existsYesNo: row.existsYesNo ?? "",
+          issuingAuthorityName: row.issuingAuthorityName ?? "",
+          attached: !!row.attached,
+          uploadedFiles: row.uploadedFiles ?? [],
+        }))
         : defaultSection3LandDocs(),
     section3LegalActions: (form as unknown as { section3LegalActions?: Section3LegalActions }).section3LegalActions
       ? {
-          hasDisputes: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.hasDisputes ?? "no",
-          disputeExplanation: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.disputeExplanation ?? "",
-          judicialDecisions: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.judicialDecisions,
-          administrativeRulings: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.administrativeRulings,
-          settlementDocsAttached: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.settlementDocsAttached,
-          uploadedFiles: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.uploadedFiles ?? [],
-        }
+        hasDisputes: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.hasDisputes ?? "no",
+        disputeExplanation: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.disputeExplanation ?? "",
+        judicialDecisions: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.judicialDecisions,
+        administrativeRulings: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.administrativeRulings,
+        settlementDocsAttached: !!(form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.settlementDocsAttached,
+        uploadedFiles: (form as unknown as { section3LegalActions: Section3LegalActions }).section3LegalActions.uploadedFiles ?? [],
+      }
       : defaultSection3LegalActions(),
     documentUploads: {
       landRights: form.documentUploads?.landRights ?? [],
@@ -908,7 +915,12 @@ function LocationPickerModal({
   const canConfirm = latValid && lngValid;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div className="w-full max-w-4xl rounded-xl border border-border-soft bg-bg-surface shadow-xl">
         <div className="flex items-center justify-between border-b border-border-soft px-4 py-3">
           <div>
@@ -1028,10 +1040,84 @@ function LocationPickerModal({
   );
 }
 
-function SupplierPortalContent() {
+function hydrateIntermediaryFormFromSubmission(
+  submission: IntermediaryDeclarationSubmission,
+  name: string,
+  email = "",
+): IntermediaryFormState {
+  const sections = submission.sections as Record<string, any>;
+  return ensureIntermediaryUploads({
+    ...defaultIntermediaryForm(name, email),
+    roles: sections.section1?.roles ?? ["Primary Processor"],
+    suppliedCommodities: sections.section1?.suppliedCommodities ?? ["Cocoa & Cocoa-Derived Products"],
+    legalName: sections.section2?.legalName ?? name,
+    country: sections.section2?.country ?? "",
+    email: sections.section2?.email ?? email,
+    section3Facilities: sections.section3?.facilities ?? defaultSection3Facilities(),
+    section3LandDocs: sections.section3?.landDocumentMatrix ?? defaultSection3LandDocs(),
+    section3LegalActions: sections.section3?.legalActions ?? defaultSection3LegalActions(),
+    licenses: sections.section4?.licenses ?? "",
+    certifications: sections.section4?.certifications ?? "",
+    purchasedMaterials: sections.section5A?.purchasedMaterials ?? "",
+    tradeProof: sections.section5A?.tradeProof ?? defaultIntermediaryForm(name, email).tradeProof,
+    traceabilityCapabilities: sections.section5A?.traceabilityCapabilities ?? defaultIntermediaryForm(name, email).traceabilityCapabilities,
+    processingActivity: sections.section5B?.processingActivity ?? "",
+    outputProduct: sections.section5B?.outputProduct ?? "",
+    firstPointOfSale: sections.section5B?.firstPointOfSale ?? "",
+    policies: sections.section6?.policies ?? defaultIntermediaryForm(name, email).policies,
+    thirdPartyVerification: sections.section7?.thirdPartyVerification ?? "",
+    upstreamEntities: submission.upstreamEntities ?? [],
+    traceabilityControls: submission.traceabilityControls ?? "",
+    signatureName: sections.section8?.signatureName ?? submission.signatureName ?? "",
+    designation: sections.section8?.designation ?? "",
+    declarationDate: sections.section8?.declarationDate ?? submission.submittedAt,
+  });
+}
+
+function hydrateFarmerFormFromSubmission(
+  submission: FarmerDeclarationSubmission,
+  name: string,
+): FarmerFormState {
+  const sections = submission.sections as Record<string, any>;
+  return {
+    ...defaultFarmerForm(name),
+    producerType: sections.section1?.producerType ?? "Individual Smallholder Farmer",
+    fullName: sections.section1?.fullName ?? name,
+    country: sections.section1?.country ?? "",
+    commodities: sections.section2?.commodities ?? ["Cocoa"],
+    harvestYears: sections.section2?.harvestYears ?? "2025-2026",
+    annualVolume: sections.section2?.annualVolume ?? "",
+    landBasis: sections.section3?.landBasis ?? "Ownership",
+    landDocuments: sections.section3?.landDocuments ?? "",
+    plots: submission.plotRows?.length ? submission.plotRows : defaultFarmerForm(name).plots,
+    deforestationConfirmations: sections.section5?.confirmations ?? defaultFarmerForm(name).deforestationConfirmations,
+    previousLandUse: sections.section5?.previousLandUse ?? "Agricultural land",
+    boundaryChanged: sections.section5?.boundaryChanged ?? "No",
+    environmentalCompliance: sections.section6?.environmentalCompliance ?? defaultFarmerForm(name).environmentalCompliance,
+    communityRights: sections.section7?.communityRights ?? "Not Applicable",
+    labourTypes: sections.section8?.labourTypes ?? ["Family labour only"],
+    labourCompliance: sections.section8?.labourCompliance ?? defaultFarmerForm(name).labourCompliance,
+    firstPointOfSale: sections.section9?.firstPointOfSale ?? "",
+    tradeProof: sections.section9?.tradeProof ?? defaultFarmerForm(name).tradeProof,
+    sellingMethod: sections.section9?.sellingMethod ?? "Product sold directly from farm",
+    certification: sections.section10?.certification ?? "No certification",
+    disputes: sections.section11?.disputes ?? "No",
+    signatureName: sections.section12?.signatureName ?? submission.signatureName ?? "",
+    declarationDate: sections.section12?.declarationDate ?? submission.submittedAt,
+  };
+}
+
+function SupplierPortalContent({
+  tokenOverride,
+  mode = "portal",
+  onClose,
+  onSave,
+}: SupplierPortalContentProps = {}) {
   const {
     eudrFormRequests,
     supplyChainNodes,
+    intermediaryDeclarationSubmissions,
+    farmerDeclarationSubmissions,
     editEudrFormRequest,
     editSupplyChainNode,
     addIntermediaryDeclarationSubmission,
@@ -1041,7 +1127,9 @@ function SupplierPortalContent() {
     propagateChainCompletion,
   } = useSession();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token")?.trim() ?? "";
+  const embeddedMode = searchParams.get("embed") === "1";
+  const token = tokenOverride?.trim() ?? searchParams.get("token")?.trim() ?? "";
+  const isInternalMode = mode === "internal" || embeddedMode;
 
   // Track which upstream entities already have generated form links (entityId -> tokenLabel)
   const [generatedEntityLinks, setGeneratedEntityLinks] = useState<Record<string, { tokenLabel: string; formType: string; url: string }>>({});
@@ -1075,12 +1163,12 @@ function SupplierPortalContent() {
   }, [scopedRequests, selectedRequestId]);
 
   useEffect(() => {
-    const lang = searchParams.get("lang");
+    const lang = isInternalMode ? null : searchParams.get("lang");
     const storedLocale = typeof window !== "undefined" ? window.localStorage.getItem("gfi.portal.locale") : null;
     const resolved = ([lang, storedLocale].find((value): value is string => !!value && SUPPORTED_LOCALES.includes(value as SupportedLocale)) ??
       "en") as SupportedLocale;
     setLocale(resolved);
-  }, [searchParams]);
+  }, [isInternalMode, searchParams]);
 
   useEffect(() => {
     const storedIntermediary = localStorage.getItem("gfi_exact_intermediary_forms");
@@ -1101,22 +1189,34 @@ function SupplierPortalContent() {
   useEffect(() => {
     if (!selectedRequest || !selectedNode) return;
     if (selectedRequest.formType === "INTERMEDIARY" && !intermediaryForms[selectedRequest.id]) {
+      const existingSubmission = intermediaryDeclarationSubmissions
+        .filter((submission) => submission.requestId === selectedRequest.id && submission.nodeId === selectedNode.id)
+        .sort((left, right) => left.submittedAt.localeCompare(right.submittedAt))
+        .at(-1);
       const next = {
         ...intermediaryForms,
-        [selectedRequest.id]: defaultIntermediaryForm(selectedNode.entityName, selectedRequest.email),
+        [selectedRequest.id]: existingSubmission
+          ? hydrateIntermediaryFormFromSubmission(existingSubmission, selectedNode.entityName, selectedRequest.email)
+          : defaultIntermediaryForm(selectedNode.entityName, selectedRequest.email),
       };
       setIntermediaryForms(next);
       localStorage.setItem("gfi_exact_intermediary_forms", JSON.stringify(next));
     }
     if (selectedRequest.formType === "FARMER" && !farmerForms[selectedRequest.id]) {
+      const existingSubmission = farmerDeclarationSubmissions
+        .filter((submission) => submission.requestId === selectedRequest.id && submission.nodeId === selectedNode.id)
+        .sort((left, right) => left.submittedAt.localeCompare(right.submittedAt))
+        .at(-1);
       const next = {
         ...farmerForms,
-        [selectedRequest.id]: defaultFarmerForm(selectedNode.entityName),
+        [selectedRequest.id]: existingSubmission
+          ? hydrateFarmerFormFromSubmission(existingSubmission, selectedNode.entityName)
+          : defaultFarmerForm(selectedNode.entityName),
       };
       setFarmerForms(next);
       localStorage.setItem("gfi_exact_farmer_forms", JSON.stringify(next));
     }
-  }, [selectedRequest, selectedNode, intermediaryForms, farmerForms]);
+  }, [selectedRequest, selectedNode, intermediaryForms, farmerForms, intermediaryDeclarationSubmissions, farmerDeclarationSubmissions]);
 
   const updateIntermediaryForm = (updates: Partial<IntermediaryFormState>) => {
     if (!selectedRequest || !intermediaryForm) return;
@@ -1363,6 +1463,14 @@ function SupplierPortalContent() {
         : "Farmer declaration submitted. This chain branch is now complete - status propagated up the supply chain.",
     );
     setTimeout(() => setNotice(null), 6000);
+  };
+
+  const saveInternalDraft = () => {
+    const message = "Declaration form saved.";
+    setLastSavedAt(new Date().toISOString());
+    setNotice(message);
+    onSave?.(message);
+    setTimeout(() => setNotice(null), 3000);
   };
 
   const renderCheckboxGroup = (items: string[], selected: string[], onChange: (next: string[]) => void) => (
@@ -1781,16 +1889,16 @@ function SupplierPortalContent() {
       const fields =
         section === 3
           ? [
-              ["Business registration, manufacturing, food safety, environmental and import/export licenses", "licenses"],
-              ["Sustainability certification scheme, commodity, certificate number, CoC type and validity", "certifications"],
-            ]
+            ["Business registration, manufacturing, food safety, environmental and import/export licenses", "licenses"],
+            ["Sustainability certification scheme, commodity, certificate number, CoC type and validity", "certifications"],
+          ]
           : section === 5
             ? [
-                ["Processing/refining/blending/fermentation/chemical modification activity", "processingActivity"],
-                ["Input commodity purchased, processing performed and output product supplied", "outputProduct"],
-                ["Process flow, environmental plan and latest environmental audit availability", "processingDocuments"],
-                ["First point of sale: buyer, buyer type and location", "firstPointOfSale"],
-              ]
+              ["Processing/refining/blending/fermentation/chemical modification activity", "processingActivity"],
+              ["Input commodity purchased, processing performed and output product supplied", "outputProduct"],
+              ["Process flow, environmental plan and latest environmental audit availability", "processingDocuments"],
+              ["First point of sale: buyer, buyer type and location", "firstPointOfSale"],
+            ]
             : section === 6
               ? [["Policy evidence notes for health and safety, environment, anti-deforestation, labour and due diligence", "thirdPartyVerification"]]
               : [["Certification, third-party audit scope, validity period and attachment notes", "thirdPartyVerification"]];
@@ -1985,13 +2093,13 @@ function SupplierPortalContent() {
                         {linkFormType} form - {linkToken}
                         {existingChildNode ? ` - ${childStatus.replace(/_/g, " ")}` : " - LINK SENT"}
                       </span>
-                       <button
-                         type="button"
-                         onClick={() => {
-                           const url = entityLink?.url || `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${linkToken}`;
-                           navigator.clipboard.writeText(url);
-                           setNotice(`Link copied: ${url}`);
-                           setTimeout(() => setNotice(null), 3000);
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = entityLink?.url || `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${linkToken}`;
+                          navigator.clipboard.writeText(url);
+                          setNotice(`Link copied: ${url}`);
+                          setTimeout(() => setNotice(null), 3000);
                         }}
                         className="btn-secondary px-2 py-1 text-[10px]"
                       >
@@ -2018,10 +2126,10 @@ function SupplierPortalContent() {
             instruction={INTERMEDIARY_FIELD_META[4].tradeProof.instruction}
           >
             {Object.keys(intermediaryForm.tradeProof).map((key) => (
-                <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
+              <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
                 <input type="checkbox" checked={intermediaryForm.tradeProof[key]} onChange={() => updateIntermediaryForm({ tradeProof: { ...intermediaryForm.tradeProof, [key]: !intermediaryForm.tradeProof[key] } })} />
-                  <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
-                </label>
+                <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
+              </label>
             ))}
           </InfoRow>
           <InfoRow
@@ -2037,10 +2145,10 @@ function SupplierPortalContent() {
             instruction={INTERMEDIARY_FIELD_META[4].traceabilityCapabilities.instruction}
           >
             {Object.keys(intermediaryForm.traceabilityCapabilities).map((key) => (
-                <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
+              <label key={key} className="mr-3 inline-flex max-w-full items-start gap-1.5 text-xs">
                 <input type="checkbox" checked={intermediaryForm.traceabilityCapabilities[key]} onChange={() => updateIntermediaryForm({ traceabilityCapabilities: { ...intermediaryForm.traceabilityCapabilities, [key]: !intermediaryForm.traceabilityCapabilities[key] } })} />
-                  <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
-                </label>
+                <span className="break-words">{formatIntermediaryOptionLabel(key)}</span>
+              </label>
             ))}
           </InfoRow>
           <InfoRow
@@ -2202,7 +2310,7 @@ function SupplierPortalContent() {
 
   if (!token) {
     return (
-      <div style={{ minHeight: "100vh", background: "var(--fos-bg-page)", padding: "var(--space-8)" }}>
+      <div style={{ minHeight: "calc(100dvh - var(--platform-footer-height))", background: "var(--fos-bg-page)", padding: "var(--space-8)", paddingBottom: "calc(var(--space-8) + var(--platform-footer-height))" }}>
         <div className="fos-card">{copy.noAccess}</div>
       </div>
     );
@@ -2210,236 +2318,277 @@ function SupplierPortalContent() {
 
   if (!selectedRequest || !selectedNode || selectedRequest.expiresAt < new Date().toISOString().slice(0, 10)) {
     return (
-      <div style={{ minHeight: "100vh", background: "var(--fos-bg-page)", padding: "var(--space-8)" }}>
+      <div style={{ minHeight: "calc(100dvh - var(--platform-footer-height))", background: "var(--fos-bg-page)", padding: "var(--space-8)", paddingBottom: "calc(var(--space-8) + var(--platform-footer-height))" }}>
         <div className="fos-card">{copy.invalidToken}</div>
       </div>
     );
   }
 
-  return (
-    <NextIntlClientProvider locale={locale} messages={{ portal: copy }}>
-      <div dir={isRtl ? "rtl" : "ltr"} style={{ minHeight: "100vh", background: "var(--fos-bg-page)", display: "flex", flexDirection: "column" }}>
-        <AppTopbar
-          variant="portal"
-          portalTitle={formType === "FARMER" ? "Agricultural producer / farmer form" : "Intermediary actor declaration form"}
-          portalSubtitle={copy.portalTitle}
-          languageLabel={copy.language}
-          locale={locale}
-          locales={SUPPORTED_LOCALES}
-          onLocaleChange={(next) => {
-            const nextLocale = next as SupportedLocale;
-            setLocale(nextLocale);
-            localStorage.setItem("gfi.portal.locale", nextLocale);
-          }}
-          backHref="/dashboard"
-          backLabel={copy.back}
-          scopeLabel={copy.scopedAccess}
-          requestStatusLabel={selectedRequest.status.replace(/_/g, " ")}
-          requestStatusTone={
-            selectedRequest.status === "CLOSED"
-              ? "success"
-              : selectedRequest.status === "CHANGES_REQUESTED"
-                ? "danger"
-                : selectedRequest.status === "UNDER_REVIEW"
-                  ? "warning"
-                  : "info"
-          }
-        />
+  const workspaceSection = (
+    <section className={isInternalMode ? "grid gap-5 min-w-0" : "fos-card w-full"} style={{ display: "grid", gap: "var(--space-5)", minWidth: 0 }}>
+      {notice && (
+        <div style={{ padding: "12px", border: "1px solid var(--fos-accent)", borderRadius: "var(--radius-md)", color: "var(--fos-primary)", background: "rgba(217, 242, 79, 0.1)", fontWeight: 700 }}>
+          {notice}
+        </div>
+      )}
+      <div className="flex items-center justify-between rounded-md border border-border-soft bg-bg-surface-alt px-3 py-2 text-xs font-semibold text-text-secondary">
+        <span>{copy.saveState}</span>
+        <span>{lastSavedAt ? formatLocalDateTime(lastSavedAt) : "-"}</span>
+      </div>
 
-      <main className="mx-auto w-full max-w-[1380px] p-4 md:p-8 flex flex-col lg:grid lg:grid-cols-[minmax(280px,330px)_minmax(0,1fr)] gap-6 lg:items-start" style={{ boxSizing: "border-box" }}>
-        <aside className="fos-card w-full" style={{ display: "grid", gap: "var(--space-4)", minWidth: 0 }}>
-          <h2 style={{ fontSize: "var(--text-md)", fontWeight: 800, color: "var(--fos-primary)" }}>{copy.scopedAccess}</h2>
-          {scopedRequests.map((request) => {
-            const node = supplyChainNodes.find((item) => item.id === request.targetNodeId);
+      <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-5 pb-4" style={{ borderBottom: "1px solid var(--fos-border)", minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: "var(--text-xs)", color: "var(--fos-text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Token {selectedRequest.tokenLabel}
+          </p>
+          <h1 style={{ fontSize: "var(--text-2xl)", color: "var(--fos-primary)", fontWeight: 900 }}>{selectedNode.entityName}</h1>
+          <p style={{ color: "var(--fos-text-secondary)", fontSize: "var(--text-sm)", lineHeight: 1.65 }}>
+            Tier {selectedNode.tier} | {selectedNode.materialName} | {selectedNode.commodity} | request expires {selectedRequest.expiresAt}
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: "10px", minWidth: 0 }}>
+          <div style={{ padding: "12px", border: "1px solid var(--fos-border)", borderRadius: "var(--radius-md)" }}>
+            <p style={{ fontSize: "var(--text-xs)", color: "var(--fos-text-secondary)" }}>{copy.formType}</p>
+            <strong>{selectedRequest.formType}</strong>
+          </div>
+          <div style={{ padding: "12px", border: "1px solid var(--fos-border)", borderRadius: "var(--radius-md)" }}>
+            <p style={{ fontSize: "var(--text-xs)", color: "var(--fos-text-secondary)" }}>{copy.chainStatus}</p>
+            <strong>{selectedNode.status.replace(/_/g, " ")}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border-soft bg-bg-surface p-3" style={{ minWidth: 0, overflow: "hidden" }}>
+        <div className="mb-3 flex items-center justify-between text-xs font-semibold text-text-secondary">
+          <span>
+            Step {activeSection + 1} of {activeSections.length}
+          </span>
+          <span>{Math.round(((activeSection + 1) / activeSections.length) * 100)}% complete</span>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 stepper-scrollbar" style={{ width: "100%", minWidth: 0 }}>
+          {activeSections.map((section, index) => {
+            const stepIssues = getStepIssues(index);
+            const isComplete = index < activeSection && stepIssues.length === 0;
+            const isCurrent = index === activeSection;
+            const stepLabel = section.replace(/^Section\s+\d+\s*-\s*/i, "");
             return (
               <button
-                key={request.id}
-                onClick={() => {
-                  setSelectedRequestId(request.id);
-                  setActiveSection(0);
-                }}
-                style={{ textAlign: "left", padding: "14px", borderRadius: "var(--radius-md)", border: `1px solid ${selectedRequest.id === request.id ? "var(--fos-accent)" : "var(--fos-border)"}`, background: selectedRequest.id === request.id ? "rgba(0, 59, 43, 0.04)" : "var(--fos-surface)", cursor: "pointer", display: "grid", gap: "6px" }}
+                key={section}
+                onClick={() => setActiveSection(index)}
+                aria-current={isCurrent ? "step" : undefined}
+                className={[
+                  "inline-flex min-w-[150px] items-center gap-2 rounded-xl border-2 px-3 py-2 text-left text-xs font-semibold transition-colors duration-150",
+                  isCurrent
+                    ? "border-brand-accent bg-brand-accent-soft text-brand-primary shadow-[inset_0_0_0_1px_rgba(0,59,43,0.06)]"
+                    : isComplete
+                      ? "border-state-success/50 bg-state-success/10 text-state-success"
+                      : "border-border-soft bg-bg-surface-alt text-text-secondary hover:border-border-strong hover:text-text-primary",
+                ].join(" ")}
               >
-                <strong style={{ color: "var(--fos-primary)", fontSize: "var(--text-sm)" }}>{node?.entityName ?? request.targetSupplierId}</strong>
-                <span style={{ fontSize: "11px", color: "var(--fos-text-secondary)" }}>{request.formType} | {request.tokenLabel}</span>
-                <span className={`status-badge status-${request.status === "CLOSED" ? "ready" : request.status === "CHANGES_REQUESTED" ? "blocked" : "review-required"}`}>
-                  {request.status.replace(/_/g, " ")}
+                <span
+                  className={[
+                    "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold leading-none",
+                    isCurrent
+                      ? "bg-brand-accent text-brand-primary"
+                      : isComplete
+                        ? "bg-state-success text-white"
+                        : "bg-bg-page text-text-secondary",
+                  ].join(" ")}
+                >
+                  {isComplete ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
                 </span>
+                <span className="line-clamp-2">{stepLabel}</span>
               </button>
             );
           })}
-        </aside>
+        </div>
+      </div>
+      {validationIssues.length > 0 ? (
+        <div className="rounded-md border border-state-error/40 bg-state-error/10 p-3 text-sm text-state-error">
+          <p className="font-semibold">{copy.issuesTitle}</p>
+          <ul className="mt-2 list-disc pl-5">
+            {validationIssues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
-        <section className="fos-card w-full" style={{ display: "grid", gap: "var(--space-5)", minWidth: 0 }}>
-          {notice && (
-            <div style={{ padding: "12px", border: "1px solid var(--fos-accent)", borderRadius: "var(--radius-md)", color: "var(--fos-primary)", background: "rgba(217, 242, 79, 0.1)", fontWeight: 700 }}>
-              {notice}
-            </div>
+      <div style={{ display: "grid", gap: "var(--space-4)" }}>
+        <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, color: "var(--fos-primary)" }}>{activeSections[activeSection]}</h2>
+        {formType === "FARMER" ? renderFarmerSection() : renderIntermediarySection()}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", borderTop: "1px solid var(--fos-border)", paddingTop: "16px" }}>
+        <button className="btn-secondary" disabled={activeSection === 0} onClick={() => setActiveSection((value) => Math.max(0, value - 1))}>
+          {copy.prev}
+        </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+          {isInternalMode ? (
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                const issues = getStepIssues(activeSection);
+                if (issues.length > 0) {
+                  setValidationIssues(issues);
+                  return;
+                }
+                setValidationIssues([]);
+                saveInternalDraft();
+              }}
+            >
+              Save form
+            </button>
+          ) : null}
+          {activeSection < activeSections.length - 1 ? (
+            <button
+              className="btn-primary"
+              onClick={() => {
+                const issues = getStepIssues(activeSection);
+                if (issues.length > 0) {
+                  setValidationIssues(issues);
+                  return;
+                }
+                setValidationIssues([]);
+                setActiveSection((value) => Math.min(activeSections.length - 1, value + 1));
+              }}
+            >
+              {copy.next}
+            </button>
+          ) : (
+            <button
+              className="btn-primary"
+              onClick={() => {
+                const issues = getStepIssues(activeSection);
+                if (issues.length > 0) {
+                  setValidationIssues(issues);
+                  return;
+                }
+                setValidationIssues([]);
+                if (isInternalMode) {
+                  saveInternalDraft();
+                  return;
+                }
+                if (formType === "FARMER") {
+                  submitFarmer();
+                } else {
+                  submitIntermediary();
+                }
+              }}
+            >
+              {isInternalMode ? "Save form" : copy.submit}
+            </button>
           )}
-          <div className="flex items-center justify-between rounded-md border border-border-soft bg-bg-surface-alt px-3 py-2 text-xs font-semibold text-text-secondary">
-            <span>{copy.saveState}</span>
-            <span>{lastSavedAt ? formatLocalDateTime(lastSavedAt) : "-"}</span>
-          </div>
+        </div>
+      </div>
+    </section>
+  );
 
-          <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-5 pb-4" style={{ borderBottom: "1px solid var(--fos-border)", minWidth: 0 }}>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: "var(--text-xs)", color: "var(--fos-text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                Token {selectedRequest.tokenLabel}
-              </p>
-              <h1 style={{ fontSize: "var(--text-2xl)", color: "var(--fos-primary)", fontWeight: 900 }}>{selectedNode.entityName}</h1>
-              <p style={{ color: "var(--fos-text-secondary)", fontSize: "var(--text-sm)", lineHeight: 1.65 }}>
-                Tier {selectedNode.tier} | {selectedNode.materialName} | {selectedNode.commodity} | request expires {selectedRequest.expiresAt}
-              </p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: "10px", minWidth: 0 }}>
-              <div style={{ padding: "12px", border: "1px solid var(--fos-border)", borderRadius: "var(--radius-md)" }}>
-                <p style={{ fontSize: "var(--text-xs)", color: "var(--fos-text-secondary)" }}>{copy.formType}</p>
-                <strong>{selectedRequest.formType}</strong>
-              </div>
-              <div style={{ padding: "12px", border: "1px solid var(--fos-border)", borderRadius: "var(--radius-md)" }}>
-                <p style={{ fontSize: "var(--text-xs)", color: "var(--fos-text-secondary)" }}>{copy.chainStatus}</p>
-                <strong>{selectedNode.status.replace(/_/g, " ")}</strong>
-              </div>
-            </div>
-          </div>
+  return (
+    <NextIntlClientProvider locale={locale} messages={{ portal: copy }}>
+      <div
+        dir={isRtl ? "rtl" : "ltr"}
+        style={{
+          minHeight: isInternalMode ? "auto" : "calc(100dvh - var(--platform-footer-height))",
+          paddingBottom: isInternalMode ? undefined : "var(--platform-footer-height)",
+          background: "var(--fos-bg-page)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {isInternalMode ? null : (
+          <AppTopbar
+            variant="portal"
+            portalTitle={formType === "FARMER" ? "Agricultural producer / farmer form" : "Intermediary actor declaration form"}
+            portalSubtitle={copy.portalTitle}
+            languageLabel={copy.language}
+            locale={locale}
+            locales={SUPPORTED_LOCALES}
+            onLocaleChange={(next) => {
+              const nextLocale = next as SupportedLocale;
+              setLocale(nextLocale);
+              localStorage.setItem("gfi.portal.locale", nextLocale);
+            }}
+            backHref="/dashboard"
+            backLabel={copy.back}
+            scopeLabel={copy.scopedAccess}
+            requestStatusLabel={selectedRequest.status.replace(/_/g, " ")}
+            requestStatusTone={
+              selectedRequest.status === "CLOSED"
+                ? "success"
+                : selectedRequest.status === "CHANGES_REQUESTED"
+                  ? "danger"
+                  : selectedRequest.status === "UNDER_REVIEW"
+                    ? "warning"
+                    : "info"
+            }
+          />
+        )}
 
-          <div className="rounded-lg border border-border-soft bg-bg-surface p-3" style={{ minWidth: 0, overflow: "hidden" }}>
-            <div className="mb-3 flex items-center justify-between text-xs font-semibold text-text-secondary">
-              <span>
-                Step {activeSection + 1} of {activeSections.length}
-              </span>
-              <span>{Math.round(((activeSection + 1) / activeSections.length) * 100)}% complete</span>
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 stepper-scrollbar" style={{ width: "100%", minWidth: 0 }}>
-              {activeSections.map((section, index) => {
-                const stepIssues = getStepIssues(index);
-                const isComplete = index < activeSection && stepIssues.length === 0;
-                const isCurrent = index === activeSection;
-                const stepLabel = section.replace(/^Section\s+\d+\s*-\s*/i, "");
+        {isInternalMode ? (
+          <div className="max-h-[78vh] overflow-y-auto px-6 py-5">
+            {workspaceSection}
+          </div>
+        ) : (
+          <main className="mx-auto w-full max-w-[1380px] p-4 md:p-8 flex flex-col lg:grid lg:grid-cols-[minmax(280px,330px)_minmax(0,1fr)] gap-6 lg:items-start" style={{ boxSizing: "border-box" }}>
+            <aside className="fos-card w-full" style={{ display: "grid", gap: "var(--space-4)", minWidth: 0 }}>
+              <h2 style={{ fontSize: "var(--text-md)", fontWeight: 800, color: "var(--fos-primary)" }}>{copy.scopedAccess}</h2>
+              {scopedRequests.map((request) => {
+                const node = supplyChainNodes.find((item) => item.id === request.targetNodeId);
                 return (
                   <button
-                    key={section}
-                    onClick={() => setActiveSection(index)}
-                    aria-current={isCurrent ? "step" : undefined}
-                    className={[
-                      "inline-flex min-w-[150px] items-center gap-2 rounded-xl border-2 px-3 py-2 text-left text-xs font-semibold transition-colors duration-150",
-                      isCurrent
-                        ? "border-brand-accent bg-brand-accent-soft text-brand-primary shadow-[inset_0_0_0_1px_rgba(0,59,43,0.06)]"
-                        : isComplete
-                          ? "border-state-success/50 bg-state-success/10 text-state-success"
-                          : "border-border-soft bg-bg-surface-alt text-text-secondary hover:border-border-strong hover:text-text-primary",
-                    ].join(" ")}
+                    key={request.id}
+                    onClick={() => {
+                      setSelectedRequestId(request.id);
+                      setActiveSection(0);
+                    }}
+                    style={{ textAlign: "left", padding: "14px", borderRadius: "var(--radius-md)", border: `1px solid ${selectedRequest.id === request.id ? "var(--fos-accent)" : "var(--fos-border)"}`, background: selectedRequest.id === request.id ? "rgba(0, 59, 43, 0.04)" : "var(--fos-surface)", cursor: "pointer", display: "grid", gap: "6px" }}
                   >
-                    <span
-                      className={[
-                        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold leading-none",
-                        isCurrent
-                          ? "bg-brand-accent text-brand-primary"
-                          : isComplete
-                            ? "bg-state-success text-white"
-                            : "bg-bg-page text-text-secondary",
-                      ].join(" ")}
-                    >
-                      {isComplete ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : index + 1}
+                    <strong style={{ color: "var(--fos-primary)", fontSize: "var(--text-sm)" }}>{node?.entityName ?? request.targetSupplierId}</strong>
+                    <span style={{ fontSize: "11px", color: "var(--fos-text-secondary)" }}>{request.formType} | {request.tokenLabel}</span>
+                    <span className={`status-badge status-${request.status === "CLOSED" ? "ready" : request.status === "CHANGES_REQUESTED" ? "blocked" : "review-required"}`}>
+                      {request.status.replace(/_/g, " ")}
                     </span>
-                    <span className="line-clamp-2">{stepLabel}</span>
                   </button>
                 );
               })}
-            </div>
-          </div>
-          {validationIssues.length > 0 ? (
-            <div className="rounded-md border border-state-error/40 bg-state-error/10 p-3 text-sm text-state-error">
-              <p className="font-semibold">{copy.issuesTitle}</p>
-              <ul className="mt-2 list-disc pl-5">
-                {validationIssues.map((issue) => (
-                  <li key={issue}>{issue}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+            </aside>
+            {workspaceSection}
+          </main>
+        )}
 
-          <div style={{ display: "grid", gap: "var(--space-4)" }}>
-            <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 800, color: "var(--fos-primary)" }}>{activeSections[activeSection]}</h2>
-            {formType === "FARMER" ? renderFarmerSection() : renderIntermediarySection()}
-          </div>
+        {formType === "INTERMEDIARY" && intermediaryForm ? (
+          <LocationPickerModal
+            open={isLocationPickerOpen}
+            initialLat={intermediaryForm.headOfficeLat}
+            initialLng={intermediaryForm.headOfficeLng}
+            initialAddress={intermediaryForm.headOfficeAddress}
+            onClose={() => setIsLocationPickerOpen(false)}
+            onConfirm={({ lat, lng, address }) => {
+              updateIntermediaryForm({
+                headOfficeLat: lat,
+                headOfficeLng: lng,
+                headOfficeAddress: address,
+              });
+              setIsLocationPickerOpen(false);
+            }}
+          />
+        ) : null}
 
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", borderTop: "1px solid var(--fos-border)", paddingTop: "16px" }}>
-            <button className="btn-secondary" disabled={activeSection === 0} onClick={() => setActiveSection((value) => Math.max(0, value - 1))}>
-              {copy.prev}
-            </button>
-            <div style={{ display: "flex", gap: "10px" }}>
-              {activeSection < activeSections.length - 1 ? (
-                <button
-                  className="btn-primary"
-                  onClick={() => {
-                    const issues = getStepIssues(activeSection);
-                    if (issues.length > 0) {
-                      setValidationIssues(issues);
-                      return;
-                    }
-                    setValidationIssues([]);
-                    setActiveSection((value) => Math.min(activeSections.length - 1, value + 1));
-                  }}
-                >
-                  {copy.next}
-                </button>
-              ) : (
-                <button
-                  className="btn-primary"
-                  onClick={() => {
-                    const issues = getStepIssues(activeSection);
-                    if (issues.length > 0) {
-                      setValidationIssues(issues);
-                      return;
-                    }
-                    setValidationIssues([]);
-                    if (formType === "FARMER") {
-                      submitFarmer();
-                    } else {
-                      submitIntermediary();
-                    }
-                  }}
-                >
-                  {copy.submit}
-                </button>
-              )}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      {formType === "INTERMEDIARY" && intermediaryForm ? (
-        <LocationPickerModal
-          open={isLocationPickerOpen}
-          initialLat={intermediaryForm.headOfficeLat}
-          initialLng={intermediaryForm.headOfficeLng}
-          initialAddress={intermediaryForm.headOfficeAddress}
-          onClose={() => setIsLocationPickerOpen(false)}
-          onConfirm={({ lat, lng, address }) => {
-            updateIntermediaryForm({
-              headOfficeLat: lat,
-              headOfficeLng: lng,
-              headOfficeAddress: address,
-            });
-            setIsLocationPickerOpen(false);
-          }}
-        />
-      ) : null}
-
-      <footer className="mx-auto mb-6 w-full max-w-[1380px] px-4 md:px-8 flex justify-center">
-        <DevelopedByFooter className="border-border-soft bg-bg-surface text-text-secondary" />
-      </footer>
-    </div>
+      </div>
     </NextIntlClientProvider>
   );
 }
 
 export default function SupplierPortalPage() {
+  useEffect(() => {
+    document.title = "Supplier Portal | GFI Compliance Control Center";
+  }, []);
+
   return (
     <Suspense
       fallback={
-        <div style={{ minHeight: "100vh", background: "var(--fos-bg-page)", padding: "var(--space-8)" }}>
+        <div style={{ minHeight: "calc(100dvh - var(--platform-footer-height))", padding: "var(--space-8)", paddingBottom: "calc(var(--space-8) + var(--platform-footer-height))", background: "var(--fos-bg-page)" }}>
           <div className="fos-card">{PORTAL_COPY.en.loading}</div>
         </div>
       }
@@ -2448,4 +2597,3 @@ export default function SupplierPortalPage() {
     </Suspense>
   );
 }
-

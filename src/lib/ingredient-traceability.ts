@@ -521,7 +521,84 @@ export function buildIngredientTraceabilityViewModel(input: {
     })
     .sort((left, right) => left.label.localeCompare(right.label));
 
-  const rootById = roots.reduce<Record<string, IngredientTraceabilityRootSummary>>((acc, root) => {
+  // A supplier chain can have multiple parentless actors feeding the GFI anchor
+  // in parallel. Group those actors into one ingredient/supplier entry
+  // instead of presenting each parentless actor as a separate supplier chain.
+  const aggregatedRootsMap: Record<string, IngredientTraceabilityRootSummary> = {};
+
+  roots.forEach((root) => {
+    const key = `${root.ingredientName.trim().toLowerCase()}::${root.supplierId}`;
+    if (!aggregatedRootsMap[key]) {
+      aggregatedRootsMap[key] = {
+        ...root,
+        nodeIds: [...root.nodeIds],
+        leafNodeIds: [...root.leafNodeIds],
+        blockingNodeIds: [...root.blockingNodeIds],
+        branchGroups: [...root.branchGroups],
+      };
+    } else {
+      const existing = aggregatedRootsMap[key];
+      const productNames = existing.productName.split(", ").map((name) => name.trim());
+      if (!productNames.includes(root.productName.trim())) {
+        existing.productName = [...productNames, root.productName.trim()].join(", ");
+        existing.label = `${existing.ingredientName} • ${existing.productName} • ${existing.directSupplierName}`;
+      }
+      existing.nodeIds = Array.from(new Set([...existing.nodeIds, ...root.nodeIds]));
+      existing.leafNodeIds = Array.from(new Set([...existing.leafNodeIds, ...root.leafNodeIds]));
+      existing.blockingNodeIds = Array.from(new Set([...existing.blockingNodeIds, ...root.blockingNodeIds]));
+      existing.branchGroups = [...existing.branchGroups, ...root.branchGroups].map((branch) => ({
+        ...branch,
+        rootId: existing.rootId,
+      }));
+      existing.totalActors = existing.nodeIds.length;
+      existing.farmerCount = existing.nodeIds.filter((nodeId) => {
+        const node = nodeById[nodeId];
+        return node ? PRODUCER_ACTOR_TYPES.has(node.actorType) : false;
+      }).length;
+      existing.branchCount = existing.branchGroups.length;
+      existing.incompleteLeafCount = existing.leafNodeIds.filter((nodeId) => nodeById[nodeId]?.status !== "COMPLETE").length;
+      existing.completionPercent = existing.leafNodeIds.length === 0
+        ? 0
+        : Math.round(
+            (existing.leafNodeIds.filter((nodeId) => nodeById[nodeId]?.status === "COMPLETE").length /
+              existing.leafNodeIds.length) *
+              100,
+          );
+      existing.shipmentImpact =
+        existing.shipmentImpact === "BLOCKED" || root.shipmentImpact === "BLOCKED"
+          ? "BLOCKED"
+          : existing.shipmentImpact === "AT_RISK" || root.shipmentImpact === "AT_RISK"
+            ? "AT_RISK"
+            : "READY";
+      existing.latestActivityDate = maxIsoDate([existing.latestActivityDate, root.latestActivityDate]);
+    }
+  });
+
+  const aggregatedRoots = Object.values(aggregatedRootsMap).sort((left, right) => left.label.localeCompare(right.label));
+
+  // 1. Filter out roots where directSupplierName is exactly "abc" (case-insensitive check)
+  const filteredRoots = aggregatedRoots.filter(
+    (root) => root.directSupplierName.toLowerCase() !== "abc"
+  );
+
+  // 2. Rearrange list: "Palm fat blend" first, "Natural cocoa powder" second, then the rest
+  const finalRoots: IngredientTraceabilityRootSummary[] = [];
+
+  const palmFatRoots = filteredRoots.filter(
+    (root) => root.ingredientName.toLowerCase() === "palm fat blend"
+  );
+  const naturalCocoaRoots = filteredRoots.filter(
+    (root) => root.ingredientName.toLowerCase() === "natural cocoa powder"
+  );
+  const otherRoots = filteredRoots.filter(
+    (root) =>
+      root.ingredientName.toLowerCase() !== "palm fat blend" &&
+      root.ingredientName.toLowerCase() !== "natural cocoa powder"
+  );
+
+  finalRoots.push(...palmFatRoots, ...naturalCocoaRoots, ...otherRoots);
+
+  const rootById = finalRoots.reduce<Record<string, IngredientTraceabilityRootSummary>>((acc, root) => {
     acc[root.rootId] = root;
     return acc;
   }, {});
@@ -533,12 +610,12 @@ export function buildIngredientTraceabilityViewModel(input: {
     return acc;
   }, {});
 
-  const branchGroups = roots.flatMap((root) => root.branchGroups);
+  const branchGroups = finalRoots.flatMap((root) => root.branchGroups);
 
   void consignments;
 
   return {
-    roots,
+    roots: finalRoots,
     rootById,
     nodeDetailsById,
     tierGroups,

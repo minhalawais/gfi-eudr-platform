@@ -12,7 +12,7 @@ export interface IngredientClassification {
 
 const HS_PREFIX_RULES: Array<{ prefixes: string[]; commodity: Exclude<CommodityCode, "NONE">; note: string }> = [
   { prefixes: ["18"], commodity: "COCOA", note: "HS family maps to cocoa in Annex I." },
-  { prefixes: ["1511", "151321", "151329", "120710", "230660", "291570", "382311", "382312", "382319", "382370"], commodity: "PALM", note: "HS family maps to oil palm in Annex I." },
+  { prefixes: ["1511", "151321", "151329", "151620", "151790", "120710", "230660", "291570", "382311", "382312", "382319", "382370"], commodity: "PALM", note: "HS family maps to oil palm in Annex I." },
   { prefixes: ["0901"], commodity: "COFFEE", note: "HS family maps to coffee in Annex I." },
   { prefixes: ["1201", "120810", "1507", "2304"], commodity: "SOYA", note: "HS family maps to soya in Annex I." },
   { prefixes: ["400"], commodity: "RUBBER", note: "HS family maps to rubber in Annex I." },
@@ -41,16 +41,6 @@ export function classifyIngredientEudr(name: string, hsCode: string): Ingredient
   const reviewPath = hsCode.toLowerCase().includes("review");
   const nameHit = inferByName(name);
 
-  if (reviewPath) {
-    return {
-      commodity: nameHit ?? "NONE",
-      relevance: "UNDER_REVIEW",
-      classificationSource: "manual_review",
-      classificationNote: "HS path is ambiguous and marked for legal/compliance review.",
-      confidence: "medium",
-    };
-  }
-
   for (const rule of HS_PREFIX_RULES) {
     if (rule.prefixes.some((prefix) => normalizedHs.startsWith(prefix))) {
       return {
@@ -61,6 +51,16 @@ export function classifyIngredientEudr(name: string, hsCode: string): Ingredient
         confidence: "high",
       };
     }
+  }
+
+  if (reviewPath) {
+    return {
+      commodity: nameHit ?? "NONE",
+      relevance: "UNDER_REVIEW",
+      classificationSource: "manual_review",
+      classificationNote: "HS path is ambiguous and marked for legal/compliance review.",
+      confidence: "medium",
+    };
   }
 
   if (nameHit) {
@@ -81,4 +81,3 @@ export function classifyIngredientEudr(name: string, hsCode: string): Ingredient
     confidence: "high",
   };
 }
-

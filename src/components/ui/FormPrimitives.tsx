@@ -53,7 +53,7 @@ export function ModalShell({
       aria-modal="true"
       aria-labelledby={labelledBy}
       aria-describedby={describedBy}
-      onMouseDown={(event) => {
+      onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >

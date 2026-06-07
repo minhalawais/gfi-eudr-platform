@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Pencil, Plus } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Plus, RotateCcw, Trash2, FileEdit, Upload, Calendar, User, FileText } from "lucide-react";
 import { getSupplierName } from "@/lib/gfi-dummy-data";
 import { useSession } from "@/components/ui/PermissionGuard";
 import { IngredientRecord, ProductRecord } from "@/lib/gfi-dummy-data";
@@ -29,25 +29,15 @@ type RelevanceFilter = "ALL" | "IN_SCOPE" | "UNDER_REVIEW" | "OUT_OF_SCOPE" | "B
 interface ProductDecisionHeaderVM {
   name: string;
   hsCode: string;
-  summary: string;
-  scopeStatus: ProductRecord["scopeStatus"];
-  readiness: ProductRecord["exportReadiness"];
-  flow: ProductRecord["operatorFlow"];
 }
 
 interface ProductDossierVM {
-  annualVolume: string;
-  primaryMarkets: string;
   activeBomRevision: string;
   revisionCount: number;
 }
 
 interface IngredientEvidenceSummaryVM {
   total: number;
-  inScope: number;
-  underReview: number;
-  outOfScope: number;
-  blocked: number;
 }
 
 function humanize(value: string): string {
@@ -81,6 +71,171 @@ function deriveReadinessFromIngredients(ingredients: IngredientRecord[], fallbac
   return fallback;
 }
 
+interface RevisionDetail {
+  code: string;
+  date: string;
+  author: string;
+  description: string;
+  status: "Active" | "Superseded" | "Draft";
+  ingredients: Array<{
+    name: string;
+    hsCode: string;
+    percentage: string;
+    supplierName: string;
+    cocModel: string;
+    certifications: string;
+  }>;
+}
+
+const getRevisionDetails = (product: ProductRecord, revisionCode: string): RevisionDetail => {
+  const cleanCode = revisionCode.replace(" active", "").trim();
+  const isActive = revisionCode.toLowerCase().includes("active") || cleanCode === product.activeBomRevision;
+
+  const mockDb: Record<string, Record<string, Partial<RevisionDetail>>> = {
+    "prd-chew": {
+      "BOM-CHW-2025-R1": {
+        date: "2025-11-12",
+        author: "Sarah Jenkins (Compliance Lead)",
+        description: "Initial baseline BOM formulation uploaded during product onboarding. Features standard composition weights.",
+        status: "Superseded",
+        ingredients: [
+          { name: "Liquid Glucose (Corn Syrup)", hsCode: "170230", percentage: "55.00%", supplierName: "Rafhan Maize Products", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Sugar", hsCode: "170199", percentage: "32.35%", supplierName: "Layyah Sugar Mills", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Non Hydrogenated Vegetable Fat (Palm)", hsCode: "151329", percentage: "3.50%", supplierName: "Cargill", cocModel: "SG", certifications: "BVC-RSPO-MY008900" },
+          { name: "Maize Starch", hsCode: "110812", percentage: "3.50%", supplierName: "Rafhan Maize Products", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Acidity Regulator (Citric Acid)", hsCode: "291814", percentage: "2.20%", supplierName: "N A Enterprises", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Gum Arabic (E414)", hsCode: "130120", percentage: "0.15%", supplierName: "N A Enterprises", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Artificial Flavours", hsCode: "330210", percentage: "0.30%", supplierName: "Takasago Int. Pakistan", cocModel: "SG", certifications: "Not Applicable" },
+        ]
+      },
+      "BOM-CHW-2026-R2": {
+        date: "2026-02-15",
+        author: "Marcus Vance (Supply Chain Coordinator)",
+        description: "Updated formulation to swap the glucose supplier and adjust active composition ratios. Added certifications for corn derivatives.",
+        status: "Superseded",
+        ingredients: [
+          { name: "Liquid Glucose (Corn Syrup)", hsCode: "170230", percentage: "54.00%", supplierName: "Rafhan Maize Products", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Sugar", hsCode: "170199", percentage: "32.35%", supplierName: "Layyah Sugar Mills", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Non Hydrogenated Vegetable Fat (Palm)", hsCode: "151329", percentage: "3.25%", supplierName: "Cargill", cocModel: "SG", certifications: "BVC-RSPO-MY008900" },
+          { name: "Maize Starch", hsCode: "110812", percentage: "3.20%", supplierName: "Rafhan Maize Products", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Acidity Regulator (Citric Acid)", hsCode: "291814", percentage: "2.20%", supplierName: "N A Enterprises", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Gum Arabic (E414)", hsCode: "130120", percentage: "0.10%", supplierName: "N A Enterprises", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Soy Lecithin (E322)", hsCode: "292320", percentage: "0.01%", supplierName: "N A Enterprises", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Artificial Flavours", hsCode: "330210", percentage: "0.31%", supplierName: "Takasago Int. Pakistan", cocModel: "SG", certifications: "Not Applicable" },
+        ]
+      }
+    },
+    "prd-bubble-gum": {
+      "BOM-BBL-2026-R1": {
+        date: "2026-01-20",
+        author: "Sarah Jenkins (Compliance Lead)",
+        description: "Baseline BOM formulation. Verified free of Annex I EUDR commodities.",
+        status: "Active",
+      }
+    },
+    "prd-hard-candy": {
+      "BOM-HBC-2025-R1": {
+        date: "2025-10-05",
+        author: "Sarah Jenkins (Compliance Lead)",
+        description: "Initial formulation import. Maize starch and sugar links unverified. Basic composition test.",
+        status: "Superseded",
+        ingredients: [
+          { name: "Liquid Glucose (Corn Syrup)", hsCode: "170230", percentage: "40.00%", supplierName: "Rafhan Maize Products", cocModel: "IP", certifications: "Not Applicable" },
+          { name: "Sugar", hsCode: "170199", percentage: "48.00%", supplierName: "Layyah Sugar Mills", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Acidity Regulator (Citric Acid)", hsCode: "291814", percentage: "7.60%", supplierName: "N A Enterprises", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Dextrose (Glucose Powder)", hsCode: "170230", percentage: "4.40%", supplierName: "Rafhan Maize Products", cocModel: "IP", certifications: "Not Applicable" },
+        ]
+      }
+    },
+    "prd-chocolate": {
+      "BOM-CHO-2025-R2": {
+        date: "2025-09-18",
+        author: "Sarah Jenkins (Compliance Lead)",
+        description: "Historical formulation import prior to EUDR vendor onboarding. Cocoa sources unassessed.",
+        status: "Superseded",
+        ingredients: [
+          { name: "Sugar", hsCode: "170199", percentage: "60.00%", supplierName: "Layyah Sugar Mills", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Vegetable Fat", hsCode: "151329", percentage: "25.00%", supplierName: "Cargill", cocModel: "SG", certifications: "BVC-RSPO-MY008900" },
+          { name: "Wheat Flour", hsCode: "110100", percentage: "7.70%", supplierName: "Manzoor & Brothers", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Natural cocoa powder", hsCode: "180500", percentage: "6.30%", supplierName: "JB Cocoa SDN BHD Malaysia", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Milk Powder", hsCode: "040210", percentage: "1.00%", supplierName: "Mubashar Traders", cocModel: "SG", certifications: "Not Applicable" },
+        ]
+      },
+      "BOM-CHO-2026-R3": {
+        date: "2026-01-10",
+        author: "Marcus Vance (Supply Chain Coordinator)",
+        description: "Updated to introduce alkalized cocoa powder and refine ingredient weights. Initiated EUDR audit phase.",
+        status: "Superseded",
+        ingredients: [
+          { name: "Sugar", hsCode: "170199", percentage: "59.30%", supplierName: "Layyah Sugar Mills", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Vegetable Fat", hsCode: "151329", percentage: "24.20%", supplierName: "Cargill", cocModel: "SG", certifications: "BVC-RSPO-MY008900" },
+          { name: "Wheat Flour", hsCode: "110100", percentage: "7.70%", supplierName: "Manzoor & Brothers", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Natural cocoa powder", hsCode: "180500", percentage: "6.00%", supplierName: "JB Cocoa SDN BHD Malaysia", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Alkalized cocoa powder", hsCode: "180500", percentage: "2.00%", supplierName: "N A Enterprises", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Milk Powder", hsCode: "040210", percentage: "0.80%", supplierName: "Mubashar Traders", cocModel: "SG", certifications: "Not Applicable" },
+        ]
+      }
+    },
+    "prd-wafers": {
+      "BOM-WAF-2026-R1": {
+        date: "2026-02-05",
+        author: "Sarah Jenkins (Compliance Lead)",
+        description: "Initial baseline for wafers onboarding. Standard formulation weights.",
+        status: "Superseded",
+        ingredients: [
+          { name: "Sugar", hsCode: "170199", percentage: "17.00%", supplierName: "Layyah Sugar Mills", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Vegetable fat", hsCode: "151329", percentage: "19.00%", supplierName: "Cargill", cocModel: "SG", certifications: "BVC-RSPO-MY008900" },
+          { name: "Wheat Flour", hsCode: "110100", percentage: "63.50%", supplierName: "Manzoor & Brothers", cocModel: "SG", certifications: "Not Applicable" },
+          { name: "Salt", hsCode: "250100", percentage: "0.50%", supplierName: "Agrotech (Pvt) Ltd", cocModel: "SG", certifications: "Not Applicable" },
+        ]
+      }
+    }
+  };
+
+  const defaultIngredients = product.ingredients.map(ing => ({
+    name: ing.name,
+    hsCode: ing.hsCode,
+    percentage: ing.percentage,
+    supplierName: ing.supplierName || "No supplier linkage",
+    cocModel: ing.cocModel || "Not Applicable",
+    certifications: ing.certifications || "Not Applicable",
+  }));
+
+  const fallbackDetails: RevisionDetail = {
+    code: cleanCode,
+    date: isActive ? "2026-05-10" : "2025-08-20",
+    author: isActive ? "Marcus Vance (Supply Chain Coordinator)" : "Sarah Jenkins (Compliance Lead)",
+    description: isActive
+      ? "Current active production BOM formulation. Verified supplier connections and compliance attributes."
+      : "Historical BOM revision formulation archived for compliance record-keeping.",
+    status: isActive ? "Active" : "Superseded",
+    ingredients: defaultIngredients,
+  };
+
+  if (isActive) {
+    const productMocks = mockDb[product.id];
+    const specActive = productMocks?.[cleanCode] || {};
+    return {
+      ...fallbackDetails,
+      ...specActive,
+      code: cleanCode,
+      status: "Active",
+      ingredients: defaultIngredients,
+    };
+  }
+
+  const productMocks = mockDb[product.id];
+  if (productMocks && productMocks[cleanCode]) {
+    return {
+      ...fallbackDetails,
+      ...productMocks[cleanCode],
+      code: cleanCode,
+    };
+  }
+
+  return fallbackDetails;
+};
+
 export default function ProductsPage() {
   const {
     products: currentProducts,
@@ -90,6 +245,7 @@ export default function ProductsPage() {
     supplyChainNodes,
     eudrFormRequests,
     generateEudrFormRequest,
+    scenarioId,
   } = useSession();
 
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -100,18 +256,46 @@ export default function ProductsPage() {
   const [complianceDrawerInitialTab, setComplianceDrawerInitialTab] = useState<"traceability" | "plots" | "deforestation" | "documents">("traceability");
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // BOM Revision Details Modal state
+  const [selectedRevision, setSelectedRevision] = useState<string | null>(null);
+  const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
+
+  // BOM Ingredient CRUD Modals state
+  const [isAddIngredientModalOpen, setIsAddIngredientModalOpen] = useState(false);
+  const [isEditIngredientModalOpen, setIsEditIngredientModalOpen] = useState(false);
+  const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
+
+  // Upload certification modal states
+  const [isUploadCertModalOpen, setIsUploadCertModalOpen] = useState(false);
+  const [certIngredientId, setCertIngredientId] = useState<string | null>(null);
+  const [certForm, setCertForm] = useState({
+    certifications: "",
+    certificationsExpiry: "",
+    fileName: "",
+    documentType: "Certificates & Declarations",
+  });
+
+  const [ingredientForm, setIngredientForm] = useState({
+    name: "",
+    hsCode: "",
+    percentage: "0%",
+    scientificName: "",
+    cocModel: "Not Applicable",
+    supplierId: "",
+    certifications: "Not Applicable",
+    commodity: "NONE" as any,
+    relevance: "IN_SCOPE" as any,
+    readiness: "READY" as any,
+    evidenceStatus: "COMPLETE" as any,
+    blockingReason: "",
+  });
 
   const [formName, setFormName] = useState("");
   const [formHs, setFormHs] = useState("");
   const [formMarkets, setFormMarkets] = useState("EU, Pakistan");
   const [formVolume, setFormVolume] = useState("1,200 tons");
-  const [formScope, setFormScope] = useState<"OUT_OF_SCOPE" | "IN_SCOPE" | "UNDER_CLASSIFICATION_REVIEW" | "FUTURE_EXPORT_BLOCKED">("IN_SCOPE");
-  const [formReadiness, setFormReadiness] = useState<"READY" | "NOT_READY" | "REVIEW_REQUIRED">("REVIEW_REQUIRED");
   const [formRevision, setFormRevision] = useState("REV-2026-01");
-  const [formOutputMode, setFormOutputMode] = useState<"COMPLIANCE_PACKAGE" | "DIRECT_DDS">("COMPLIANCE_PACKAGE");
-  const [formSummary, setFormSummary] = useState("");
-  const [formGaps, setFormGaps] = useState("");
   const [formIngredients, setFormIngredients] = useState<IngredientRecord[]>([]);
 
   const [ingName, setIngName] = useState("");
@@ -124,18 +308,18 @@ export default function ProductsPage() {
   const [ingSupplier, setIngSupplier] = useState("");
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [relevanceFilter, setRelevanceFilter] = useState<RelevanceFilter>("ALL");
-  const [expandedChains, setExpandedChains] = useState<Record<string, boolean>>({});
-
-  const [editingId, setEditingId] = useState<string | null>(null);
 
   const activeProductId = selectedProductId || currentProducts[0]?.id || "";
   const selectedProduct = currentProducts.find((product) => product.id === activeProductId) ?? currentProducts[0];
+
+  const activeRevisionDetails = useMemo(() => {
+    return selectedRevision && selectedProduct
+      ? getRevisionDetails(selectedProduct, selectedRevision)
+      : null;
+  }, [selectedRevision, selectedProduct]);
+
   const evidenceSummaryVm: IngredientEvidenceSummaryVM = useMemo(() => ({
     total: selectedProduct?.ingredients.length ?? 0,
-    inScope: selectedProduct?.ingredients.filter((ingredient) => ingredient.relevance === "IN_SCOPE").length ?? 0,
-    underReview: selectedProduct?.ingredients.filter((ingredient) => ingredient.relevance === "UNDER_REVIEW").length ?? 0,
-    outOfScope: selectedProduct?.ingredients.filter((ingredient) => ingredient.relevance === "OUT_OF_SCOPE").length ?? 0,
-    blocked: selectedProduct?.ingredients.filter((ingredient) => ingredient.readiness === "BLOCKED").length ?? 0,
   }), [selectedProduct]);
 
   const decisionHeaderVm: ProductDecisionHeaderVM | null = useMemo(() => {
@@ -143,18 +327,12 @@ export default function ProductsPage() {
     return {
       name: selectedProduct.name,
       hsCode: selectedProduct.finishedHsCode,
-      summary: selectedProduct.summary,
-      scopeStatus: selectedProduct.scopeStatus,
-      readiness: selectedProduct.exportReadiness,
-      flow: selectedProduct.operatorFlow,
     };
   }, [selectedProduct]);
 
   const dossierVm: ProductDossierVM | null = useMemo(() => {
     if (!selectedProduct) return null;
     return {
-      annualVolume: selectedProduct.annualVolume,
-      primaryMarkets: selectedProduct.primaryMarkets.join(", "),
       activeBomRevision: selectedProduct.activeBomRevision,
       revisionCount: selectedProduct.bomHistory.length,
     };
@@ -216,6 +394,182 @@ export default function ProductsPage() {
     setTimeout(() => setAppealStatus(null), 6000);
   };
 
+  const handleResetToBaseline = () => {
+    if (typeof window !== "undefined") {
+      const keysToClear = [
+        `gfi_custom_suppliers_${scenarioId}`,
+        `gfi_custom_products_${scenarioId}`,
+        `gfi_custom_consignments_${scenarioId}`,
+        `gfi_custom_agents_${scenarioId}`,
+        `gfi_custom_documents_${scenarioId}`,
+        `gfi_custom_concerns_${scenarioId}`,
+        `gfi_custom_receipts_${scenarioId}`,
+        `gfi_custom_supply_chain_nodes_${scenarioId}`,
+        `gfi_custom_eudr_form_requests_${scenarioId}`,
+        `gfi_custom_supply_chain_edges_${scenarioId}`,
+        `gfi_custom_intermediary_submissions_${scenarioId}`,
+        `gfi_custom_farmer_submissions_${scenarioId}`,
+        `gfi_custom_eudr_evidence_${scenarioId}`,
+        `gfi_custom_plots_${scenarioId}`,
+        `gfi_custom_deforestation_cases_${scenarioId}`,
+      ];
+      keysToClear.forEach((key) => localStorage.removeItem(key));
+      window.location.reload();
+    }
+  };
+
+  const handleDeleteIngredient = (ingredientId: string) => {
+    if (!selectedProduct) return;
+    const updatedIngredients = selectedProduct.ingredients.filter((ing) => ing.id !== ingredientId);
+    const updatedScope = deriveScopeFromIngredients(updatedIngredients, selectedProduct.scopeStatus);
+    const updatedReadiness = deriveReadinessFromIngredients(updatedIngredients, selectedProduct.exportReadiness);
+    editProduct({
+      ...selectedProduct,
+      ingredients: updatedIngredients,
+      scopeStatus: updatedScope,
+      exportReadiness: updatedReadiness,
+    });
+  };
+
+  const handleOpenAddIngredient = () => {
+    setIngredientForm({
+      name: "",
+      hsCode: "",
+      percentage: "0%",
+      scientificName: "",
+      cocModel: "Not Applicable",
+      supplierId: "",
+      certifications: "Not Applicable",
+      commodity: "NONE",
+      relevance: "IN_SCOPE",
+      readiness: "READY",
+      evidenceStatus: "COMPLETE",
+      blockingReason: "",
+    });
+    setIsAddIngredientModalOpen(true);
+  };
+
+  const handleOpenEditIngredient = (ingredient: IngredientRecord) => {
+    setEditingIngredientId(ingredient.id);
+    setIngredientForm({
+      name: ingredient.name,
+      hsCode: ingredient.hsCode,
+      percentage: ingredient.percentage,
+      scientificName: ingredient.scientificName || "",
+      cocModel: ingredient.cocModel || "Not Applicable",
+      supplierId: ingredient.supplierIds?.[0] || "",
+      certifications: ingredient.certifications || "Not Applicable",
+      commodity: ingredient.commodity || "NONE",
+      relevance: ingredient.relevance || "IN_SCOPE",
+      readiness: ingredient.readiness || "READY",
+      evidenceStatus: ingredient.evidenceStatus || "COMPLETE",
+      blockingReason: ingredient.blockingReason || "",
+    });
+    setIsEditIngredientModalOpen(true);
+  };
+  const handleSaveIngredient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct || !ingredientForm.name.trim()) return;
+
+    const supplier = currentSuppliers.find((s) => s.id === ingredientForm.supplierId);
+    const supplierName = supplier ? supplier.name : (ingredientForm.supplierId ? "Unknown Supplier" : "No supplier linkage");
+
+    const originalIngredient = editingIngredientId
+      ? selectedProduct.ingredients.find((ing) => ing.id === editingIngredientId)
+      : null;
+
+    const ingredientData: IngredientRecord = {
+      id: editingIngredientId || `ing-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: ingredientForm.name,
+      hsCode: ingredientForm.hsCode || "Unknown",
+      percentage: ingredientForm.percentage || "0%",
+      scientificName: ingredientForm.scientificName || "Not Applicable",
+      cocModel: ingredientForm.cocModel || "Not Applicable",
+      supplierIds: ingredientForm.supplierId ? [ingredientForm.supplierId] : [],
+      supplierName: supplierName,
+      certifications: ingredientForm.certifications || "Not Applicable",
+      documentType: originalIngredient?.documentType,
+      commodity: originalIngredient ? originalIngredient.commodity : "NONE",
+      relevance: originalIngredient ? originalIngredient.relevance : "IN_SCOPE",
+      readiness: originalIngredient ? originalIngredient.readiness : "READY",
+      evidenceStatus: originalIngredient ? originalIngredient.evidenceStatus : "COMPLETE",
+      blockingReason: originalIngredient ? originalIngredient.blockingReason : "",
+      supplyChainStatus: originalIngredient
+        ? (originalIngredient.supplyChainStatus || "NOT_REQUESTED")
+        : "NOT_REQUESTED",
+      originCountries: originalIngredient?.originCountries ?? (supplier ? [supplier.country] : []),
+      primaryOriginCountry: originalIngredient?.primaryOriginCountry ?? supplier?.country ?? "",
+      euRiskTier: originalIngredient?.euRiskTier ?? "UNKNOWN",
+      dueDiligenceMode: originalIngredient?.dueDiligenceMode ?? "STANDARD",
+      legalityDossierStatus: originalIngredient?.legalityDossierStatus ?? "MISSING",
+      ddsStatus: originalIngredient?.ddsStatus ?? "DRAFT",
+    };
+
+    let updatedIngredients = [...selectedProduct.ingredients];
+    if (editingIngredientId) {
+      updatedIngredients = updatedIngredients.map((ing) =>
+        ing.id === editingIngredientId ? ingredientData : ing
+      );
+      setIsEditIngredientModalOpen(false);
+    } else {
+      updatedIngredients.push(ingredientData);
+      setIsAddIngredientModalOpen(false);
+    }
+
+    const updatedScope = deriveScopeFromIngredients(updatedIngredients, selectedProduct.scopeStatus);
+    const updatedReadiness = deriveReadinessFromIngredients(updatedIngredients, selectedProduct.exportReadiness);
+
+    editProduct({
+      ...selectedProduct,
+      ingredients: updatedIngredients,
+      scopeStatus: updatedScope,
+      exportReadiness: updatedReadiness,
+    });
+
+    setEditingIngredientId(null);
+  };
+
+  const handleOpenUploadCert = (ingredient: IngredientRecord) => {
+    setCertIngredientId(ingredient.id);
+    setCertForm({
+      certifications: ingredient.certifications && ingredient.certifications !== "Not Applicable" ? ingredient.certifications : "",
+      certificationsExpiry: ingredient.certificationsExpiry || "",
+      fileName: "",
+      documentType: ingredient.documentType || "Certificates & Declarations",
+    });
+    setIsUploadCertModalOpen(true);
+  };
+
+  const handleSaveUploadCert = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct || !certIngredientId) return;
+
+    const updatedIngredients = selectedProduct.ingredients.map((ing) => {
+      if (ing.id === certIngredientId) {
+        return {
+          ...ing,
+          certifications: certForm.certifications || "Not Applicable",
+          certificationsExpiry: certForm.certificationsExpiry || undefined,
+          documentType: certForm.certifications ? certForm.documentType : undefined,
+        };
+      }
+      return ing;
+    });
+
+    const updatedScope = deriveScopeFromIngredients(updatedIngredients, selectedProduct.scopeStatus);
+    const updatedReadiness = deriveReadinessFromIngredients(updatedIngredients, selectedProduct.exportReadiness);
+
+    editProduct({
+      ...selectedProduct,
+      ingredients: updatedIngredients,
+      scopeStatus: updatedScope,
+      exportReadiness: updatedReadiness,
+    });
+
+    setIsUploadCertModalOpen(false);
+    setCertIngredientId(null);
+  };
+
   const clearIngSubform = () => {
     setIngName("");
     setIngHs("");
@@ -232,19 +586,14 @@ export default function ProductsPage() {
     setFormHs("");
     setFormMarkets("EU, Pakistan");
     setFormVolume("1,200 tons");
-    setFormScope("IN_SCOPE");
-    setFormReadiness("REVIEW_REQUIRED");
     setFormRevision("REV-2026-01");
-    setFormOutputMode("COMPLIANCE_PACKAGE");
-    setFormSummary("");
-    setFormGaps("");
     setFormIngredients([]);
-    setEditingId(null);
     clearIngSubform();
   };
 
   const handleAddIngredient = () => {
     if (!ingName.trim()) return;
+    const supplier = currentSuppliers.find((item) => item.id === ingSupplier);
     const newIng: IngredientRecord = {
       id: `ing-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: ingName,
@@ -257,6 +606,16 @@ export default function ProductsPage() {
       evidenceStatus: ingEvidence,
       blockingReason: ingReadiness === "BLOCKED" ? "Missing supplier provenance files." : "",
       supplyChainStatus: "NOT_REQUESTED",
+      scientificName: "Not Applicable",
+      cocModel: "Not Applicable",
+      supplierName: supplier?.name || "No supplier linkage",
+      certifications: "Not Applicable",
+      originCountries: supplier ? [supplier.country] : [],
+      primaryOriginCountry: supplier?.country ?? "",
+      euRiskTier: "UNKNOWN",
+      dueDiligenceMode: "STANDARD",
+      legalityDossierStatus: "MISSING",
+      ddsStatus: "DRAFT",
     };
     setFormIngredients((prev) => [...prev, newIng]);
     clearIngSubform();
@@ -266,62 +625,40 @@ export default function ProductsPage() {
     setFormIngredients((prev) => prev.filter((ingredient) => ingredient.id !== id));
   };
 
-  const handleOpenEdit = () => {
-    if (!selectedProduct) return;
-    setEditingId(selectedProduct.id);
-    setFormName(selectedProduct.name);
-    setFormHs(selectedProduct.finishedHsCode);
-    setFormMarkets(selectedProduct.primaryMarkets.join(", "));
-    setFormVolume(selectedProduct.annualVolume);
-    setFormScope(selectedProduct.scopeStatus);
-    setFormReadiness(selectedProduct.exportReadiness);
-    setFormRevision(selectedProduct.activeBomRevision);
-    setFormOutputMode(selectedProduct.operatorFlow);
-    setFormSummary(selectedProduct.summary);
-    setFormGaps(selectedProduct.blockingGaps.join("\n"));
-    setFormIngredients(selectedProduct.ingredients);
-    setIsEditModalOpen(true);
-  };
-
-  const handleSaveProduct = (e: React.FormEvent, isEdit: boolean) => {
+  const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formHs.trim()) return;
 
     const productData: ProductRecord = {
-      id: isEdit && editingId ? editingId : `prd-${Date.now()}`,
+      id: `prd-${Date.now()}`,
       name: formName,
       finishedHsCode: formHs,
       primaryMarkets: formMarkets.split(",").map((market) => market.trim()).filter(Boolean),
       annualVolume: formVolume,
-      scopeStatus: deriveScopeFromIngredients(formIngredients, formScope),
-      exportReadiness: deriveReadinessFromIngredients(formIngredients, formReadiness),
+      scopeStatus: deriveScopeFromIngredients(formIngredients, "IN_SCOPE"),
+      exportReadiness: deriveReadinessFromIngredients(formIngredients, "REVIEW_REQUIRED"),
       activeBomRevision: formRevision,
-      operatorFlow: formOutputMode,
-      summary: formSummary || `Simulated finished compound representing ${formName}.`,
-      blockingGaps: formGaps ? formGaps.split("\n").map((gap) => gap.trim()).filter(Boolean) : [],
-      bomHistory: isEdit && selectedProduct ? selectedProduct.bomHistory : [formRevision],
+      operatorFlow: "COMPLIANCE_PACKAGE",
+      summary: `Simulated finished compound representing ${formName}.`,
+      blockingGaps: [],
+      bomHistory: [formRevision],
       ingredients: formIngredients,
     };
 
-    if (isEdit) {
-      editProduct(productData);
-      setIsEditModalOpen(false);
-    } else {
-      addProduct(productData);
-      setSelectedProductId(productData.id);
-      setIsAddModalOpen(false);
-    }
+    addProduct(productData);
+    setSelectedProductId(productData.id);
+    setIsAddModalOpen(false);
     resetForm();
   };
 
   return (
     <div className="flex w-full flex-col gap-6">
       <SectionHeader
-        title="Product and BOM"
+        title="Product and BOM Management"
         description="Manage product scope, BOM revisions, ingredient evidence, supplier dependencies, and export readiness."
         actions={
           <div className="flex items-center gap-2">
-            {selectedProduct ? <Tag tone="brand">{selectedProduct.name}</Tag> : null}
+
             <Button
               size="sm"
               icon={<Plus className="h-4 w-4" aria-hidden="true" />}
@@ -341,11 +678,11 @@ export default function ProductsPage() {
           <div className="flex items-center justify-between gap-3 border-b border-border-soft/80 pb-3">
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-brand-primary">Products</h2>
-              <p className="text-xs text-text-secondary">Select a product to review profile and BOM readiness</p>
+              <p className="text-xs text-text-secondary">Select a product to review traceability and BOM posture</p>
             </div>
             <Tag tone="neutral">{currentProducts.length}</Tag>
           </div>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
             {currentProducts.map((product) => {
               const active = selectedProduct?.id === product.id;
               return (
@@ -357,20 +694,34 @@ export default function ProductsPage() {
                     setAppealStatus(null);
                   }}
                   className={[
-                    "group w-full rounded-lg border p-4 text-left transition-all duration-200 ease-emphasized",
+                    "relative group w-full rounded-lg border pl-4 pr-3 py-2.5 text-left transition-all duration-200 ease-emphasized overflow-hidden",
                     active
-                      ? "border-brand-accent bg-brand-accent-soft/90 shadow-card"
+                      ? "border-brand-primary bg-brand-accent-soft/40 shadow-sm"
                       : "border-border-soft bg-bg-surface hover:-translate-y-0.5 hover:border-border-strong hover:bg-bg-surface-alt hover:shadow-card",
                   ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <strong className="text-sm text-brand-primary transition-colors group-hover:text-brand-primary-dark">{product.name}</strong>
-                    <StatusBadge status={mapStatusTone(product.exportReadiness)}>{humanize(product.exportReadiness)}</StatusBadge>
+                  {active && (
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-primary rounded-l-lg" />
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="block truncate text-sm font-bold text-brand-primary transition-colors group-hover:text-brand-primary-dark">
+                      {product.name}
+                    </strong>
+                    <span className="text-[10px] font-semibold text-text-muted shrink-0">
+                      {product.ingredients.length} items
+                    </span>
                   </div>
-                  <p className="mt-2 text-xs text-text-secondary">
-                    HS {product.finishedHsCode} | {humanize(product.scopeStatus)}
-                  </p>
-                  <p className="mt-1 text-xs text-text-secondary">{product.summary}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="rounded bg-bg-page/55 border border-border-soft px-1.5 py-0.5 text-[10px] font-bold text-text-secondary">
+                      HS {product.finishedHsCode}
+                    </span>
+                    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold border uppercase tracking-wider ${product.exportReadiness === "READY"
+                      ? "bg-state-success/15 border-state-success/20 text-state-success"
+                      : "bg-state-warning/15 border-state-warning/20 text-state-warning"
+                      }`}>
+                      {product.exportReadiness === "READY" ? "Ready" : "Review"}
+                    </span>
+                  </div>
                 </button>
               );
             })}
@@ -389,116 +740,35 @@ export default function ProductsPage() {
             ) : null}
 
             {decisionHeaderVm && dossierVm ? (
-              <Card className="space-y-5">
-                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border-soft pb-4">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">Product decision header</p>
-                    <h2 className="text-2xl font-extrabold text-brand-primary">{decisionHeaderVm.name}</h2>
-                    <p className="text-sm font-medium text-text-secondary">Finished goods HS {decisionHeaderVm.hsCode}</p>
-                    <p className="max-w-3xl text-sm leading-6 text-text-secondary [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden">
-                      {decisionHeaderVm.summary}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                    <Button size="sm" variant="secondary" icon={<Pencil className="h-4 w-4" aria-hidden="true" />} onClick={handleOpenEdit}>
-                      Edit BOM
-                    </Button>
-                    {decisionHeaderVm.scopeStatus === "UNDER_CLASSIFICATION_REVIEW" ? (
-                      <Button size="sm" onClick={handleSubmitAppeal}>
-                        HS appeal
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Tag tone="warning">Scope: {humanize(decisionHeaderVm.scopeStatus)}</Tag>
-                  <Tag tone={decisionHeaderVm.readiness === "READY" ? "success" : "warning"}>
-                    Readiness: {humanize(decisionHeaderVm.readiness)}
-                  </Tag>
-                  <Tag tone="neutral">Flow: {humanize(decisionHeaderVm.flow)}</Tag>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Card variant="inset" className="space-y-1 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Scope status</p>
-                    <strong className="text-base font-semibold text-text-primary">{humanize(decisionHeaderVm.scopeStatus)}</strong>
-                    <p className="text-xs text-text-secondary">Derived from ingredient-level scope state.</p>
-                  </Card>
-                  <Card variant="inset" className="space-y-1 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Annual volume</p>
-                    <strong className="text-base font-semibold text-text-primary">{dossierVm.annualVolume}</strong>
-                    <p className="text-xs text-text-secondary">Current planning volume in active scenario.</p>
-                  </Card>
-                  <Card variant="inset" className="space-y-1 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Primary markets</p>
-                    <strong className="text-base font-semibold text-text-primary">{dossierVm.primaryMarkets}</strong>
-                    <p className="text-xs text-text-secondary">Market destinations attached to this profile.</p>
-                  </Card>
-                  <Card variant="inset" className="space-y-1 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Active BOM revision</p>
-                    <strong className="text-base font-semibold text-text-primary">{dossierVm.activeBomRevision}</strong>
-                    <p className="text-xs text-text-secondary">{dossierVm.revisionCount} revisions preserved.</p>
-                  </Card>
-                </div>
-
-                <Card variant="inset" className="space-y-2 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Operational context</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs text-text-secondary">Output mode</p>
-                      <strong className="text-base font-semibold text-text-primary">{humanize(selectedProduct.operatorFlow)}</strong>
-                    </div>
-                    <div>
-                      <p className="text-xs text-text-secondary">Revision history</p>
-                      <strong className="text-base font-semibold text-text-primary">{selectedProduct.bomHistory.length} tracked revisions</strong>
+              <Card className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border-soft pb-4">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center flex-wrap gap-2.5">
+                      <h2 className="text-xl font-extrabold text-brand-primary">{decisionHeaderVm.name}</h2>
+                      <span className="rounded bg-bg-page/80 border border-border-soft px-2 py-0.5 text-xs font-bold text-brand-primary">
+                        HS {decisionHeaderVm.hsCode}
+                      </span>
                     </div>
                   </div>
-                </Card>
+                </div>
+
               </Card>
             ) : null}
 
             <Card className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-lg font-bold text-brand-primary">Critical Gaps</h3>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="secondary">View linked evidence</Button>
-                  {selectedProduct.blockingGaps.length > 0 ? <Button size="sm">Resolve now</Button> : null}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border-soft pb-2">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-brand-primary">Product BOM</h3>
+                  <Tag tone="neutral">Total {evidenceSummaryVm.total}</Tag>
                 </div>
-              </div>
-              {selectedProduct.blockingGaps.length === 0 ? (
-                <Card variant="inset" className="border-state-success/30 bg-state-success/10 p-3 text-sm font-semibold text-state-success">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                    <span>No active blockers. Current product profile is aligned with compliance checks.</span>
-                  </div>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {selectedProduct.blockingGaps.map((gap, index) => (
-                    <Card key={gap} variant="inset" className="border-state-error/30 bg-state-error/10 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 text-sm font-semibold text-state-error">
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                        <span>{gap}</span>
-                        </div>
-                        <Tag tone="warning">Gap {index + 1}</Tag>
-                      </div>
-                      <p className="mt-2 text-xs text-state-error/90">Owner: Compliance Office | Action: Validate upstream evidence and update dossier.</p>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </Card>
-
-            <Card className="space-y-4">
-              <h3 className="text-lg font-bold text-brand-primary">Ingredient Evidence</h3>
-              <div className="flex flex-wrap items-center gap-2">
-                <Tag tone="neutral">Total {evidenceSummaryVm.total}</Tag>
-                <Tag tone="success">In scope {evidenceSummaryVm.inScope}</Tag>
-                <Tag tone="warning">Under review {evidenceSummaryVm.underReview}</Tag>
-                <Tag tone="neutral">Out of scope {evidenceSummaryVm.outOfScope}</Tag>
-                <Tag tone="danger">Blocked {evidenceSummaryVm.blocked}</Tag>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+                  onClick={handleOpenAddIngredient}
+                >
+                  Add Ingredient
+                </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
@@ -508,45 +778,29 @@ export default function ProductsPage() {
                   className="min-w-[220px] flex-1"
                 />
               </div>
-              <div className="overflow-x-auto">
-                <div className="flex min-w-max items-center gap-2 pb-2">
-                  <Button size="sm" variant={relevanceFilter === "ALL" ? "primary" : "secondary"} onClick={() => setRelevanceFilter("ALL")}>All</Button>
-                  <Button size="sm" variant={relevanceFilter === "IN_SCOPE" ? "primary" : "secondary"} onClick={() => setRelevanceFilter("IN_SCOPE")}>In scope</Button>
-                  <Button size="sm" variant={relevanceFilter === "UNDER_REVIEW" ? "primary" : "secondary"} onClick={() => setRelevanceFilter("UNDER_REVIEW")}>Under review</Button>
-                  <Button size="sm" variant={relevanceFilter === "OUT_OF_SCOPE" ? "primary" : "secondary"} onClick={() => setRelevanceFilter("OUT_OF_SCOPE")}>Out of scope</Button>
-                  <Button size="sm" variant={relevanceFilter === "BLOCKED" ? "primary" : "secondary"} onClick={() => setRelevanceFilter("BLOCKED")}>Blocked</Button>
-                </div>
-              </div>
               <TableRoot className="max-h-[640px] overflow-auto">
                 <Table className="text-xs">
                   <TableHead>
                     <tr>
                       <TableHeaderCell density={densityValue} className="sticky left-0 top-0 z-20 bg-bg-surface-alt">Ingredient</TableHeaderCell>
                       <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">HS</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Commodity</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Supplier path</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Relevance</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Readiness</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Evidence</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Chain</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Action</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Composition</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Scientific Name</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Chain of Custody model</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Supplier name</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Certifications</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt text-center">Actions</TableHeaderCell>
                     </tr>
                   </TableHead>
                   <TableBody>
                     {visibleIngredients.length === 0 ? (
                       <TableRow>
-                        <TableCell density={densityValue} className="text-center text-text-secondary" colSpan={9}>
+                        <TableCell density={densityValue} className="text-center text-text-secondary" colSpan={8}>
                           No ingredients match the current filter.
                         </TableCell>
                       </TableRow>
                     ) : (
                       visibleIngredients.map((ingredient) => {
-                        const chainStatus = getIngredientChainStatus(ingredient);
-                        const canRequest =
-                          ingredient.relevance !== "OUT_OF_SCOPE" &&
-                          ingredient.commodity !== "NONE" &&
-                          ingredient.supplierIds.length > 0 &&
-                          chainStatus !== "COMPLETE";
                         return (
                           <TableRow
                             key={ingredient.id}
@@ -558,53 +812,69 @@ export default function ProductsPage() {
                             }}
                           >
                             <TableCell density={densityValue} className="sticky left-0 z-[1] bg-bg-surface align-top">
-                              <div className="space-y-0.5">
-                                <strong className="block text-brand-primary leading-5">{ingredient.name}</strong>
-                                <p className="text-xs text-text-secondary">{ingredient.percentage}</p>
-                              </div>
+                              <strong className="block text-brand-primary leading-6">{ingredient.name}</strong>
                             </TableCell>
                             <TableCell density={densityValue} className="align-top">
                               <span className="block leading-6">{ingredient.hsCode}</span>
                             </TableCell>
-                            <TableCell density={densityValue} className="align-top">
-                              <span className="block leading-6">{ingredient.commodity}</span>
+                            <TableCell density={densityValue} className="align-top font-semibold text-text-primary">
+                              <span className="block leading-6">{ingredient.percentage}</span>
                             </TableCell>
-                            <TableCell density={densityValue} className="align-top text-xs">
-                              <p className="max-w-[180px] leading-5">
-                                {ingredient.supplierIds.length > 0
-                                  ? ingredient.supplierIds.map((supplierId) => getSupplierName(supplierId)).join(", ")
-                                  : "No EUDR supplier path required"}
-                              </p>
+                            <TableCell density={densityValue} className="align-top italic text-text-secondary">
+                              <span className="block leading-6">{ingredient.scientificName ?? "Not Applicable"}</span>
                             </TableCell>
-                            <TableCell density={densityValue} className="align-top">
-                              {ingredient.relevance === "IN_SCOPE" ? <Tag tone="success">EUDR in scope</Tag> : null}
-                              {ingredient.relevance === "OUT_OF_SCOPE" ? <Tag tone="neutral">Out of scope</Tag> : null}
-                              {ingredient.relevance === "UNDER_REVIEW" ? <Tag tone="warning">Under review</Tag> : null}
+                            <TableCell density={densityValue} className="align-top font-bold text-brand-primary">
+                              <span className="block leading-6">{ingredient.cocModel ?? "Not Applicable"}</span>
+                            </TableCell>
+                            <TableCell density={densityValue} className="align-top text-xs text-text-primary">
+                              <span className="block leading-6 font-semibold">{ingredient.supplierName ?? "No supplier linkage"}</span>
                             </TableCell>
                             <TableCell density={densityValue} className="align-top">
-                              <StatusBadge status={mapStatusTone(ingredient.readiness)}>{humanize(ingredient.readiness)}</StatusBadge>
+                              {ingredient.certifications && ingredient.certifications !== "Not Applicable" ? (
+                                <div className="space-y-1">
+                                  {ingredient.documentType && (
+                                    <span className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider leading-tight">
+                                      {ingredient.documentType}
+                                    </span>
+                                  )}
+                                  <Tag tone="brand" className="mt-0.5">{ingredient.certifications}</Tag>
+                                  {ingredient.certificationsExpiry && (
+                                    <span className="block text-[10px] text-text-secondary font-semibold">
+                                      Exp: {ingredient.certificationsExpiry}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="block leading-6 text-text-muted">Not Applicable</span>
+                              )}
                             </TableCell>
-                            <TableCell density={densityValue} className="align-top">
-                              <span className="block leading-6">{ingredient.evidenceStatus}</span>
-                            </TableCell>
-                            <TableCell density={densityValue} className="align-top">
-                              <StatusBadge status={mapStatusTone(chainStatus)}>{humanize(chainStatus)}</StatusBadge>
-                            </TableCell>
-                            <TableCell density={densityValue} className="align-top">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                disabled={!canRequest}
-                                className="min-w-[108px]"
-                                title={!canRequest ? "Link generation is available only for in-scope ingredients with supplier linkage." : "Generate ingredient-scoped request"}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleGenerateIngredientRequest(ingredient);
-                                }}
-                              >
-                                Generate link
-                              </Button>
+                            <TableCell density={densityValue} className="align-top text-center">
+                              <div className="flex items-center justify-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  title="Edit Ingredient"
+                                  onClick={() => handleOpenEditIngredient(ingredient)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-soft bg-bg-surface text-brand-primary/80 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-primary/30 hover:bg-brand-accent-soft/40 hover:text-brand-primary hover:shadow-sm"
+                                >
+                                  <FileEdit className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Upload Documentation"
+                                  onClick={() => handleOpenUploadCert(ingredient)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-soft bg-bg-surface text-brand-primary/80 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-primary/30 hover:bg-brand-accent-soft/40 hover:text-brand-primary hover:shadow-sm"
+                                >
+                                  <Upload className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Delete Ingredient"
+                                  onClick={() => handleDeleteIngredient(ingredient.id)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-soft bg-bg-surface text-state-danger/70 transition-all duration-150 hover:-translate-y-0.5 hover:border-state-danger/30 hover:bg-state-danger/10 hover:text-state-danger hover:shadow-sm"
+                                >
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -614,108 +884,107 @@ export default function ProductsPage() {
                 </Table>
               </TableRoot>
 
-              <div className="space-y-3">
-                <h4 className="text-sm font-bold text-brand-primary">Multi-tier supplier chain preview</h4>
-                {selectedProduct.ingredients
-                  .filter((ingredient) => ingredient.commodity !== "NONE" && ingredient.relevance !== "OUT_OF_SCOPE")
-                  .map((ingredient) => {
-                    const nodes = supplyChainNodes
-                      .filter((node) => node.ingredientId === ingredient.id)
-                      .sort((left, right) => left.tier - right.tier);
-                    const isExpanded = expandedChains[ingredient.id] ?? false;
-                    const visibleNodes = isExpanded ? nodes : nodes.slice(0, 4);
-                    return (
-                      <Card key={`chain-${ingredient.id}`} variant="inset" className="space-y-2 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <strong className="text-sm text-brand-primary">{ingredient.name}</strong>
-                          {nodes.length > 4 ? (
+            </Card>
+
+            <Card className="space-y-4">
+              <div className="flex items-center justify-between border-b border-border-soft pb-2">
+                <h3 className="text-lg font-bold text-brand-primary flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-brand-primary" />
+                  BOM Revision History
+                </h3>
+                <Tag tone="neutral">{selectedProduct.bomHistory.length} Revisions</Tag>
+              </div>
+              <TableRoot>
+                <Table className="text-xs">
+                  <TableHead>
+                    <tr>
+                      <TableHeaderCell density="compact">Revision Code</TableHeaderCell>
+                      <TableHeaderCell density="compact">Creation Date</TableHeaderCell>
+                      <TableHeaderCell density="compact">Author</TableHeaderCell>
+                      <TableHeaderCell density="compact">Status</TableHeaderCell>
+                      <TableHeaderCell density="compact" className="text-right">Action</TableHeaderCell>
+                    </tr>
+                  </TableHead>
+                  <TableBody>
+                    {selectedProduct.bomHistory.map((revisionCode) => {
+                      const details = getRevisionDetails(selectedProduct, revisionCode);
+                      return (
+                        <TableRow
+                          key={revisionCode}
+                          className="cursor-pointer transition-all duration-150 hover:bg-brand-accent-soft/20"
+                          onClick={() => {
+                            setSelectedRevision(revisionCode);
+                            setIsRevisionModalOpen(true);
+                          }}
+                        >
+                          <TableCell density="compact" className="font-bold text-brand-primary">
+                            {details.code}
+                          </TableCell>
+                          <TableCell density="compact" className="text-text-secondary">
+                            <span className="flex items-center gap-1.5">
+                              <Calendar className="h-3 w-3 text-text-muted" />
+                              {details.date}
+                            </span>
+                          </TableCell>
+                          <TableCell density="compact" className="font-medium text-text-primary">
+                            <span className="flex items-center gap-1.5">
+                              <User className="h-3 w-3 text-text-muted" />
+                              {details.author}
+                            </span>
+                          </TableCell>
+                          <TableCell density="compact">
+                            <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border uppercase tracking-wider ${details.status === "Active"
+                              ? "bg-state-success/15 border-state-success/20 text-state-success"
+                              : "bg-text-secondary/15 border-border-soft text-text-secondary"
+                              }`}>
+                              {details.status}
+                            </span>
+                          </TableCell>
+                          <TableCell density="compact" className="text-right" onClick={(e) => e.stopPropagation()}>
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => setExpandedChains((prev) => ({ ...prev, [ingredient.id]: !isExpanded }))}
+                              onClick={() => {
+                                setSelectedRevision(revisionCode);
+                                setIsRevisionModalOpen(true);
+                              }}
                             >
-                              {isExpanded ? "Show less" : `Show full branch (${nodes.length})`}
+                              View Details
                             </Button>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {nodes.length === 0 ? (
-                            <span className="text-xs text-text-secondary">No EUDR supplier chain request generated yet.</span>
-                          ) : (
-                            visibleNodes.map((node, index) => (
-                              <React.Fragment key={node.id}>
-                                {index > 0 ? <span className="text-text-secondary">-</span> : null}
-                                <StatusBadge status={mapStatusTone(node.status)}>
-                                  T{node.tier} {node.entityName}: {humanize(node.status)}
-                                </StatusBadge>
-                              </React.Fragment>
-                            ))
-                          )}
-                          {!isExpanded && nodes.length > 4 ? <Tag tone="neutral">+{nodes.length - 4} more nodes</Tag> : null}
-                        </div>
-                      </Card>
-                    );
-                  })}
-              </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableRoot>
             </Card>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="h-full space-y-3">
-                <h3 className="text-lg font-bold text-brand-primary">BOM Revision History</h3>
-                {selectedProduct.bomHistory.map((revision) => (
-                  <Card key={revision} variant="inset" className="p-3 text-sm text-text-primary">
-                    {revision}
-                  </Card>
-                ))}
-              </Card>
-              <Card className="h-full space-y-3">
-                <h3 className="text-lg font-bold text-brand-primary">Readiness Summary</h3>
-                <Card variant="inset" className="p-4 text-sm leading-6 text-text-secondary">
-                  {selectedProduct.exportReadiness === "READY" &&
-                    "This product can move through the package workflow with classification evidence and no critical provenance blockers."}
-                  {selectedProduct.exportReadiness === "REVIEW_REQUIRED" &&
-                    "This product is not fully blocked, but it cannot be handed to an EU operator until the open classification and evidence questions are resolved."}
-                  {selectedProduct.exportReadiness === "NOT_READY" &&
-                    "This product remains fail-closed for EU use because upstream provenance and supplier evidence are not sufficient yet."}
-                </Card>
-              </Card>
-            </div>
-
-            <div className="sticky bottom-3 z-20 rounded-lg border border-border-soft bg-bg-surface/95 p-2 shadow-card backdrop-blur lg:hidden">
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="flex-1"
-                  icon={<Pencil className="h-4 w-4" aria-hidden="true" />}
-                  onClick={handleOpenEdit}
-                >
-                  Edit BOM
-                </Button>
-                {selectedProduct.scopeStatus === "UNDER_CLASSIFICATION_REVIEW" ? (
-                  <Button size="sm" className="flex-1" onClick={handleSubmitAppeal}>
-                    HS appeal
-                  </Button>
-                ) : null}
-              </div>
-            </div>
           </div>
         ) : null}
       </div>
 
-      {(isAddModalOpen || isEditModalOpen) ? (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+      {isAddModalOpen ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAddModalOpen(false);
+              resetForm();
+            }
+          }}
+        >
           <Card className="max-h-[92vh] w-full max-w-4xl overflow-y-auto p-6">
             <div className="space-y-1">
               <h2 className="text-xl font-extrabold text-brand-primary">
-                {isEditModalOpen ? "Modify Product & BOM Revision" : "Register New Product & BOM"}
+                Register New Product & BOM
               </h2>
               <p className="text-xs text-text-secondary">
                 Configure finished product details and dynamically append or structure its sub-ingredients Bill of Materials.
               </p>
             </div>
 
-            <form onSubmit={(e) => handleSaveProduct(e, isEditModalOpen)} className="mt-4 space-y-4">
+            <form onSubmit={handleSaveProduct} className="mt-4 space-y-4">
               <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-text-secondary">Product Commercial Name</label>
@@ -740,42 +1009,6 @@ export default function ProductsPage() {
                   <label className="text-sm font-semibold text-text-secondary">Active BOM Revision</label>
                   <Input required value={formRevision} onChange={(e) => setFormRevision(e.target.value)} />
                 </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">EUDR Regulatory Scope</label>
-                  <Select value={formScope} onChange={(e) => setFormScope(e.target.value as typeof formScope)}>
-                    <option value="IN_SCOPE">IN SCOPE (Mandatory Diligence)</option>
-                    <option value="OUT_OF_SCOPE">OUT OF SCOPE (Exempt)</option>
-                    <option value="UNDER_CLASSIFICATION_REVIEW">UNDER CLASSIFICATION REVIEW</option>
-                    <option value="FUTURE_EXPORT_BLOCKED">FUTURE EXPORT BLOCKED</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Export Readiness</label>
-                  <Select value={formReadiness} onChange={(e) => setFormReadiness(e.target.value as typeof formReadiness)}>
-                    <option value="READY">READY (Cleared)</option>
-                    <option value="REVIEW_REQUIRED">REVIEW REQUIRED (Hold)</option>
-                    <option value="NOT_READY">NOT READY (Blocked)</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Operator Output Mode</label>
-                  <Select value={formOutputMode} onChange={(e) => setFormOutputMode(e.target.value as typeof formOutputMode)}>
-                    <option value="COMPLIANCE_PACKAGE">COMPLIANCE DATA PACKAGE</option>
-                    <option value="DIRECT_DDS">DIRECT DDS FILE (TRACES)</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Product Summary & Regulatory Description</label>
-                <Input
-                  value={formSummary}
-                  onChange={(e) => setFormSummary(e.target.value)}
-                  placeholder="e.g. Raw processed cocoa cake used as a chocolate compound ingredient."
-                />
               </div>
 
               <Card variant="inset" className="space-y-3 p-4">
@@ -859,29 +1092,297 @@ export default function ProductsPage() {
                 </div>
               </Card>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-secondary">Identified Regulatory Gaps (one gap per line)</label>
-                <Textarea
-                  value={formGaps}
-                  onChange={(e) => setFormGaps(e.target.value)}
-                  className="min-h-[80px] resize-y"
-                  placeholder="e.g. Missing complete plot polygon shapefiles from Sumatra smallholders."
-                />
-              </div>
-
               <div className="flex justify-end gap-3 pt-2">
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => {
                     setIsAddModalOpen(false);
-                    setIsEditModalOpen(false);
                     resetForm();
                   }}
                 >
                   Cancel
                 </Button>
-                <Button type="submit">{isEditModalOpen ? "Save Changes" : "Save Product"}</Button>
+                <Button type="submit">Save Product</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Add/Edit Ingredient Modal */}
+      {(isAddIngredientModalOpen || isEditIngredientModalOpen) ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md transition-all duration-300"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAddIngredientModalOpen(false);
+              setIsEditIngredientModalOpen(false);
+              setEditingIngredientId(null);
+            }
+          }}
+        >
+          <Card className="max-h-[92vh] w-full max-w-2xl overflow-y-auto border-border-strong/70 p-6 bg-gradient-to-b from-bg-surface to-bg-surface-alt shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-border-soft pb-4 mb-4">
+              <div className="space-y-1">
+                <h2 className="text-xl font-extrabold text-brand-primary flex items-center gap-2">
+                  {isEditIngredientModalOpen ? (
+                    <>
+                      <FileEdit className="h-5 w-5 text-brand-primary" />
+                      Modify Ingredient details
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-5 w-5 text-brand-primary" />
+                      Add Ingredient to BOM
+                    </>
+                  )}
+                </h2>
+                <p className="text-xs text-text-secondary">
+                  Specify compliance parameters, supplier connections, and certification numbers for this ingredient.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddIngredientModalOpen(false);
+                  setIsEditIngredientModalOpen(false);
+                  setEditingIngredientId(null);
+                }}
+                className="text-text-muted hover:text-text-primary rounded-lg p-1.5 transition-colors font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveIngredient} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Ingredient Name</label>
+                  <Input
+                    required
+                    value={ingredientForm.name}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })}
+                    placeholder="e.g. Cocoa Butter"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">HS Code</label>
+                  <Input
+                    required
+                    value={ingredientForm.hsCode}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, hsCode: e.target.value })}
+                    placeholder="e.g. 18040000"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Composition (%)</label>
+                  <Input
+                    required
+                    value={ingredientForm.percentage}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, percentage: e.target.value })}
+                    placeholder="e.g. 12.5%"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Scientific Name</label>
+                  <Input
+                    value={ingredientForm.scientificName}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, scientificName: e.target.value })}
+                    placeholder="e.g. Theobroma cacao"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Chain of Custody model</label>
+                  <Select
+                    value={ingredientForm.cocModel}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, cocModel: e.target.value })}
+                  >
+                    <option value="Not Applicable">Not Applicable</option>
+                    <option value="SG">Segregated (SG)</option>
+                    <option value="IP">Identity Preserved (IP)</option>
+                    <option value="MB">Mass Balance (MB)</option>
+                    <option value="BC">Book & Claim (BC)</option>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Supplier Link</label>
+                  <Select
+                    value={ingredientForm.supplierId}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, supplierId: e.target.value })}
+                  >
+                    <option value="">No supplier linkage (Direct)</option>
+                    {currentSuppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name} ({supplier.country})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Certifications</label>
+                  <Input
+                    value={ingredientForm.certifications}
+                    onChange={(e) => setIngredientForm({ ...ingredientForm, certifications: e.target.value })}
+                    placeholder="e.g. BVC-RSPO-MY008900"
+                  />
+                </div>
+              </div>
+
+
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-border-soft">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setIsAddIngredientModalOpen(false);
+                    setIsEditIngredientModalOpen(false);
+                    setEditingIngredientId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {isEditIngredientModalOpen ? "Save Changes" : "Add Ingredient"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Upload Documentation Modal */}
+      {isUploadCertModalOpen ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md transition-all duration-300"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsUploadCertModalOpen(false);
+              setCertIngredientId(null);
+            }
+          }}
+        >
+          <Card className="max-h-[92vh] w-full max-w-lg overflow-y-auto border-border-strong/70 p-6 bg-gradient-to-b from-bg-surface to-bg-surface-alt shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-border-soft pb-4 mb-4">
+              <div className="space-y-1">
+                <h2 className="text-xl font-extrabold text-brand-primary flex items-center gap-2">
+                  <Upload className="h-5 w-5 text-brand-primary" />
+                  Upload Documentation
+                </h2>
+                <p className="text-xs text-text-secondary">
+                  Provide credentials, select document category, and set the expiration date.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsUploadCertModalOpen(false);
+                  setCertIngredientId(null);
+                }}
+                className="text-text-muted hover:text-text-primary rounded-lg p-1.5 transition-colors font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveUploadCert} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Document Type</label>
+                <Select
+                  value={certForm.documentType}
+                  onChange={(e) => setCertForm({ ...certForm, documentType: e.target.value })}
+                >
+                  <option value="Agreements & Contracts">Agreements & Contracts</option>
+                  <option value="Certificates & Declarations">Certificates & Declarations</option>
+                  <option value="Product & Ingredient Documents">Product & Ingredient Documents</option>
+                  <option value="Chain of Custody (CoC) Documents">Chain of Custody (CoC) Documents</option>
+                  <option value="Geolocation & Mapping Records">Geolocation & Mapping Records</option>
+                  <option value="Legal & Permit Documents">Legal & Permit Documents</option>
+                  <option value="Audit & Assessment Reports">Audit & Assessment Reports</option>
+                  <option value="Policies & Procedures">Policies & Procedures</option>
+                  <option value="Due Diligence Documents">Due Diligence Documents</option>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Document ID / Reference</label>
+                <Input
+                  required
+                  value={certForm.certifications}
+                  onChange={(e) => setCertForm({ ...certForm, certifications: e.target.value })}
+                  placeholder="e.g. RSPO-BVC-MY008900"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Expiry Date</label>
+                <Input
+                  required
+                  type="date"
+                  value={certForm.certificationsExpiry}
+                  onChange={(e) => setCertForm({ ...certForm, certificationsExpiry: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Upload Document PDF/Image</label>
+                <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border-strong bg-bg-surface-alt/40 p-6 text-center transition-all hover:border-brand-primary hover:bg-brand-accent-soft/10">
+                  <div className="rounded-full bg-brand-accent-soft p-3 mb-2">
+                    <Upload className="h-6 w-6 text-brand-primary" />
+                  </div>
+                  {certForm.fileName ? (
+                    <span className="text-xs font-bold text-brand-primary">{certForm.fileName}</span>
+                  ) : (
+                    <>
+                      <span className="text-xs font-semibold text-text-primary">Click to upload or drag & drop</span>
+                      <span className="text-[10px] text-text-muted mt-1">PDF, PNG, JPG up to 10MB</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    className="hidden"
+                    id="cert-file-upload"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setCertForm({ ...certForm, fileName: file.name });
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => document.getElementById("cert-file-upload")?.click()}
+                  >
+                    Select File
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-border-soft">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setIsUploadCertModalOpen(false);
+                    setCertIngredientId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Save Documentation
+                </Button>
               </div>
             </form>
           </Card>
@@ -899,6 +1400,132 @@ export default function ProductsPage() {
           product={selectedProduct}
           initialTab={complianceDrawerInitialTab}
         />
+      ) : null}
+
+      {/* BOM Revision Details Modal */}
+      {isRevisionModalOpen && activeRevisionDetails ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md transition-all duration-300"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsRevisionModalOpen(false);
+              setSelectedRevision(null);
+            }
+          }}
+        >
+          <Card className="max-h-[92vh] w-full max-w-4xl overflow-y-auto border-border-strong/70 p-6 bg-gradient-to-b from-bg-surface to-bg-surface-alt shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-border-soft pb-4 mb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-extrabold text-brand-primary flex items-center gap-2">
+                    <FileText className="h-5.5 w-5.5 text-brand-primary" />
+                    BOM Revision Details: {activeRevisionDetails.code}
+                  </h2>
+                  <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold border uppercase tracking-wider ${activeRevisionDetails.status === "Active"
+                    ? "bg-state-success/15 border-state-success/20 text-state-success"
+                    : "bg-text-secondary/15 border-border-soft text-text-secondary"
+                    }`}>
+                    {activeRevisionDetails.status}
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary">
+                  Review historical composition snapshot, verified suppliers, and compliance metadata for this revision.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRevisionModalOpen(false);
+                  setSelectedRevision(null);
+                }}
+                className="text-text-muted hover:text-text-primary rounded-lg p-1.5 transition-colors font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-3 mb-6">
+              <Card variant="inset" className="p-3.5 space-y-1 bg-bg-surface/50">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">Creation Date</span>
+                <span className="text-sm font-semibold text-brand-primary block">{activeRevisionDetails.date}</span>
+              </Card>
+              <Card variant="inset" className="p-3.5 space-y-1 bg-bg-surface/50">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">Authorized By</span>
+                <span className="text-sm font-semibold text-brand-primary block">{activeRevisionDetails.author}</span>
+              </Card>
+              <Card variant="inset" className="p-3.5 space-y-1 bg-bg-surface/50">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">Finished HS Code</span>
+                <span className="text-sm font-semibold text-brand-primary block">HS {selectedProduct.finishedHsCode}</span>
+              </Card>
+            </div>
+
+            <div className="mb-6 space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">Revision Summary & Change Log</h4>
+              <Card variant="surface" className="p-4 bg-bg-page/40 border-border-soft">
+                <p className="text-sm text-text-primary leading-relaxed">{activeRevisionDetails.description}</p>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">Ingredient Composition Snapshot</h4>
+              <TableRoot className="max-h-[300px] overflow-auto border border-border-soft rounded-lg">
+                <Table className="text-xs">
+                  <TableHead>
+                    <tr>
+                      <TableHeaderCell density="compact">Ingredient</TableHeaderCell>
+                      <TableHeaderCell density="compact">HS Code</TableHeaderCell>
+                      <TableHeaderCell density="compact">Percentage</TableHeaderCell>
+                      <TableHeaderCell density="compact">Supplier</TableHeaderCell>
+                      <TableHeaderCell density="compact">CoC Model</TableHeaderCell>
+                      <TableHeaderCell density="compact">Certifications</TableHeaderCell>
+                    </tr>
+                  </TableHead>
+                  <TableBody>
+                    {activeRevisionDetails.ingredients.map((ing, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell density="compact" className="font-bold text-text-primary">
+                          {ing.name}
+                        </TableCell>
+                        <TableCell density="compact" className="text-text-secondary">
+                          {ing.hsCode}
+                        </TableCell>
+                        <TableCell density="compact" className="font-semibold text-brand-primary">
+                          {ing.percentage}
+                        </TableCell>
+                        <TableCell density="compact" className="font-medium text-text-primary">
+                          {ing.supplierName}
+                        </TableCell>
+                        <TableCell density="compact" className="font-semibold text-text-secondary">
+                          {ing.cocModel}
+                        </TableCell>
+                        <TableCell density="compact">
+                          {ing.certifications !== "Not Applicable" ? (
+                            <Tag tone="brand">{ing.certifications}</Tag>
+                          ) : (
+                            <span className="text-text-muted">Not Applicable</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableRoot>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-border-soft">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setIsRevisionModalOpen(false);
+                  setSelectedRevision(null);
+                }}
+              >
+                Close Details
+              </Button>
+            </div>
+          </Card>
+        </div>
       ) : null}
     </div>
   );

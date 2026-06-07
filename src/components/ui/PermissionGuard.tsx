@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { appendAuditEvent, summarizeLegalityDossier, toIngredientLegalityStatus } from "@/lib/legality-dossier"
 import {
   getScenarioData,
   agents as staticAgents,
@@ -19,6 +20,11 @@ import {
   EudrEvidenceAttachment,
   PlotRecord,
   DeforestationCase,
+  DdsSubmissionRecord,
+  LegalityDossierRecord,
+  LegalityEvidenceDocument,
+  OrganizationProfile,
+  organizationProfile as defaultOrganizationProfile,
 } from "@/lib/gfi-dummy-data"
 
 export type UserRole = 'TENANT_ADMIN' | 'COMPLIANCE_OFFICER' | 'AUDITOR' | 'EXPORT_MANAGER' | 'SUPPLIER' | 'PUBLIC'
@@ -31,6 +37,34 @@ export interface UserSession {
     role: UserRole
     organizationId: string
   } | null
+}
+
+export interface AccountProfile {
+  id: string
+  displayName: string
+  email: string
+  jobTitle: string
+  phone: string
+  role: UserRole
+  organizationId: string
+}
+
+const AUTH_STORAGE_KEY = 'gfi.auth.session.v1'
+const PROFILE_STORAGE_KEY = 'gfi.profile.v1'
+
+const DEFAULT_ACCOUNT_PROFILE: AccountProfile = {
+  id: 'd9b0429f-f529-470f-ad72-6878c772cb33',
+  displayName: 'GFI Compliance Admin',
+  email: 'admin_gfi@gmail.com',
+  jobTitle: 'Compliance Officer',
+  phone: '',
+  role: 'COMPLIANCE_OFFICER',
+  organizationId: '46147125-cdab-459e-a2c2-889b035c86c0',
+}
+
+type StoredProfileState = {
+  account: AccountProfile
+  organization: OrganizationProfile
 }
 
 export interface ERPReceipt {
@@ -77,7 +111,7 @@ const DEFAULT_RECEIPTS: ERPReceipt[] = [
   {
     id: "rcpt-003",
     lotNumber: "LOT-COCOA-IC-202",
-    supplierName: "Indococoa",
+    supplierName: "N A Enterprises",
     commodity: "COCOA",
     quantity: "12.0 MT",
     date: "2026-05-21",
@@ -104,6 +138,13 @@ const DEFAULT_RECEIPTS: ERPReceipt[] = [
 
 interface AuthContextType {
   session: UserSession | null
+  isHydrated: boolean
+  accountProfile: AccountProfile
+  organizationProfile: OrganizationProfile
+  login: () => void
+  logout: () => void
+  updateAccountProfile: (profile: AccountProfile) => void
+  updateOrganizationProfile: (profile: OrganizationProfile) => void
   setRole: (role: UserRole) => void
   scenarioId: string
   setScenarioId: (id: string) => void
@@ -124,6 +165,8 @@ interface AuthContextType {
   eudrEvidenceAttachments: EudrEvidenceAttachment[]
   plots: PlotRecord[]
   deforestationCases: DeforestationCase[]
+  ddsSubmissions: DdsSubmissionRecord[]
+  legalityDossiers: LegalityDossierRecord[]
   
   // CRUD Actions
   addSupplier: (record: SupplierRecord) => void
@@ -150,6 +193,29 @@ interface AuthContextType {
   addEudrEvidenceAttachment: (record: EudrEvidenceAttachment) => void
   editPlot: (record: PlotRecord) => void
   editDeforestationCase: (record: DeforestationCase) => void
+  addOrEditDdsSubmission: (record: DdsSubmissionRecord) => void
+  addOrEditLegalityDossier: (record: LegalityDossierRecord) => void
+  addLegalityEvidenceDocument: (input: {
+    dossierId: string
+    document: LegalityEvidenceDocument
+    actor?: string
+  }) => void
+  verifyLegalityEvidenceDocument: (input: {
+    dossierId: string
+    documentId: string
+    verificationStatus: LegalityEvidenceDocument["verificationStatus"]
+    verificationNote?: string
+    validFrom?: string
+    validTo?: string
+    countryRegistrarRef?: string
+    customsSealRef?: string
+    actor?: string
+  }) => void
+  updateIngredientComplianceState: (input: {
+    productId: string
+    ingredientId: string
+    changes: Partial<Pick<IngredientRecord, "legalityDossierStatus" | "ddsStatus" | "euRiskTier" | "dueDiligenceMode" | "originCountries" | "primaryOriginCountry">>
+  }) => void
   generateEudrFormRequest: (input: {
     supplierId: string
     supplierName: string
@@ -172,6 +238,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
+  isHydrated: false,
+  accountProfile: DEFAULT_ACCOUNT_PROFILE,
+  organizationProfile: defaultOrganizationProfile,
+  login: () => {},
+  logout: () => {},
+  updateAccountProfile: () => {},
+  updateOrganizationProfile: () => {},
   setRole: () => {},
   scenarioId: 'current_gfi_reality',
   setScenarioId: () => {},
@@ -191,6 +264,8 @@ const AuthContext = createContext<AuthContextType>({
   eudrEvidenceAttachments: [],
   plots: [],
   deforestationCases: [],
+  ddsSubmissions: [],
+  legalityDossiers: [],
   
   addSupplier: () => {},
   editSupplier: () => {},
@@ -216,6 +291,11 @@ const AuthContext = createContext<AuthContextType>({
   addEudrEvidenceAttachment: () => {},
   editPlot: () => {},
   editDeforestationCase: () => {},
+  addOrEditDdsSubmission: () => {},
+  addOrEditLegalityDossier: () => {},
+  addLegalityEvidenceDocument: () => {},
+  verifyLegalityEvidenceDocument: () => {},
+  updateIngredientComplianceState: () => {},
   generateEudrFormRequest: () => ({
     id: "",
     tokenLabel: "",
@@ -235,7 +315,10 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRoleState] = useState<UserRole>('COMPLIANCE_OFFICER')
-  const [orgId] = useState('46147125-cdab-459e-a2c2-889b035c86c0')
+  const [isHydrated, setIsHydrated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [accountProfile, setAccountProfile] = useState<AccountProfile>(DEFAULT_ACCOUNT_PROFILE)
+  const [organizationProfile, setOrganizationProfile] = useState<OrganizationProfile>(defaultOrganizationProfile)
   const [scenarioId, setScenarioIdState] = useState<string>('current_gfi_reality')
 
   // Custom client override states
@@ -254,16 +337,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [customEudrEvidenceAttachments, setCustomEudrEvidenceAttachments] = useState<EudrEvidenceAttachment[]>([])
   const [customPlots, setCustomPlots] = useState<PlotRecord[]>([])
   const [customDeforestationCases, setCustomDeforestationCases] = useState<DeforestationCase[]>([])
+  const [customDdsSubmissions, setCustomDdsSubmissions] = useState<DdsSubmissionRecord[]>([])
+  const [customLegalityDossiers, setCustomLegalityDossiers] = useState<LegalityDossierRecord[]>([])
 
-  // Initial Scenario Sync
+  // Hydrate authentication and editable profile state from browser storage.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    try {
+      const savedSession = localStorage.getItem(AUTH_STORAGE_KEY)
+      setIsAuthenticated(savedSession === 'authenticated')
+
+      const savedProfile = localStorage.getItem(PROFILE_STORAGE_KEY)
+      if (savedProfile) {
+        const parsed = JSON.parse(savedProfile) as Partial<StoredProfileState>
+        if (parsed.account) {
+          const nextAccount = { ...DEFAULT_ACCOUNT_PROFILE, ...parsed.account }
+          setAccountProfile(nextAccount)
+          setRoleState(nextAccount.role)
+        }
+        if (parsed.organization) {
+          setOrganizationProfile({ ...defaultOrganizationProfile, ...parsed.organization })
+        }
+      }
+
       const saved = localStorage.getItem('gfi_eudr_scenario')
       if (saved) {
         setScenarioIdState(saved)
       }
+    } catch {
+      localStorage.removeItem(AUTH_STORAGE_KEY)
+      localStorage.removeItem(PROFILE_STORAGE_KEY)
+    } finally {
+      setIsHydrated(true)
     }
   }, [])
+
+  const persistProfiles = (account: AccountProfile, organization: OrganizationProfile) => {
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ account, organization }))
+  }
+
+  const persistProfilePatch = (patch: Partial<StoredProfileState>) => {
+    let stored: StoredProfileState = {
+      account: accountProfile,
+      organization: organizationProfile,
+    }
+    try {
+      const current = localStorage.getItem(PROFILE_STORAGE_KEY)
+      if (current) {
+        const parsed = JSON.parse(current) as Partial<StoredProfileState>
+        stored = {
+          account: { ...stored.account, ...parsed.account },
+          organization: { ...stored.organization, ...parsed.organization },
+        }
+      }
+    } catch {
+      // Replace malformed profile storage with the current valid provider state.
+    }
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...stored, ...patch }))
+  }
+
+  const login = () => {
+    setIsAuthenticated(true)
+    localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
+    persistProfiles(accountProfile, organizationProfile)
+  }
+
+  const logout = () => {
+    setIsAuthenticated(false)
+    localStorage.removeItem(AUTH_STORAGE_KEY)
+  }
+
+  const updateAccountProfile = (profile: AccountProfile) => {
+    setAccountProfile(profile)
+    setRoleState(profile.role)
+    persistProfilePatch({ account: profile })
+  }
+
+  const updateOrganizationProfile = (profile: OrganizationProfile) => {
+    setOrganizationProfile(profile)
+    persistProfilePatch({ organization: profile })
+  }
 
   // Sync Local overrides whenever ScenarioId changes (Hydration Safe)
   useEffect(() => {
@@ -312,6 +464,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const df = localStorage.getItem(`gfi_custom_deforestation_cases_${scenarioId}`)
       setCustomDeforestationCases(df ? JSON.parse(df) : [])
+
+      const dds = localStorage.getItem(`gfi_custom_dds_submissions_${scenarioId}`)
+      setCustomDdsSubmissions(dds ? JSON.parse(dds) : [])
+
+      const legality = localStorage.getItem(`gfi_custom_legality_dossiers_${scenarioId}`)
+      setCustomLegalityDossiers(legality ? JSON.parse(legality) : [])
     }
   }, [scenarioId])
 
@@ -336,10 +494,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return merged
   }
 
+  // Self-healing product merge to prevent stale cached ingredient structures from overriding updated baselines
+  function mergeProducts(baseline: ProductRecord[], custom: ProductRecord[]): ProductRecord[] {
+    const merged = [...baseline]
+    custom.forEach(cust => {
+      const idx = merged.findIndex(item => item.id === cust.id)
+      if (idx >= 0) {
+        const baseProduct = merged[idx]
+        const mergedIngredients = [...cust.ingredients]
+        baseProduct.ingredients.forEach(baseIng => {
+          const customIngIdx = mergedIngredients.findIndex(
+            ing => ing.id === baseIng.id || ing.name.toLowerCase() === baseIng.name.toLowerCase()
+          )
+          if (customIngIdx >= 0) {
+            // Heal ingredient properties: merge custom edits with missing baseline properties
+            mergedIngredients[customIngIdx] = {
+              ...baseIng,
+              ...mergedIngredients[customIngIdx],
+              // Ensure that new enriched fields from baseline are copied if missing in custom
+              scientificName: mergedIngredients[customIngIdx].scientificName || baseIng.scientificName,
+              cocModel: mergedIngredients[customIngIdx].cocModel || baseIng.cocModel,
+              supplierName: mergedIngredients[customIngIdx].supplierName || baseIng.supplierName,
+              certifications: mergedIngredients[customIngIdx].certifications || baseIng.certifications,
+              originCountries: mergedIngredients[customIngIdx].originCountries?.length ? mergedIngredients[customIngIdx].originCountries : baseIng.originCountries,
+              primaryOriginCountry: mergedIngredients[customIngIdx].primaryOriginCountry || baseIng.primaryOriginCountry,
+              euRiskTier: mergedIngredients[customIngIdx].euRiskTier || baseIng.euRiskTier,
+              dueDiligenceMode: mergedIngredients[customIngIdx].dueDiligenceMode || baseIng.dueDiligenceMode,
+              legalityDossierStatus: mergedIngredients[customIngIdx].legalityDossierStatus || baseIng.legalityDossierStatus,
+              ddsStatus: mergedIngredients[customIngIdx].ddsStatus || baseIng.ddsStatus,
+            }
+          } else {
+            mergedIngredients.push(baseIng)
+          }
+        })
+        merged[idx] = {
+          ...cust,
+          ingredients: mergedIngredients,
+        }
+      } else {
+        merged.push(cust)
+      }
+    })
+    return merged
+  }
+
+  function mergeSuppliers(baseline: SupplierRecord[], custom: SupplierRecord[]): SupplierRecord[] {
+    const merged = [...baseline]
+    custom.forEach(cust => {
+      const idx = merged.findIndex(item => item.id === cust.id)
+      if (idx >= 0) {
+        merged[idx] = {
+          ...merged[idx],
+          ...cust,
+          contactPerson: cust.contactPerson || merged[idx].contactPerson,
+          address: cust.address || merged[idx].address,
+          email: cust.email || merged[idx].email,
+          fax: cust.fax || merged[idx].fax,
+          phone: cust.phone || merged[idx].phone,
+          documents: cust.documents && cust.documents.length > 0 ? cust.documents : (merged[idx].documents || []),
+        }
+      } else {
+        merged.push(cust)
+      }
+    })
+    return merged
+  }
+
   // Derived merged data
   const scenarioData = getScenarioData(scenarioId)
-  const suppliers = mergeDatasets(scenarioData.suppliers, customSuppliers)
-  const products = mergeDatasets(scenarioData.products, customProducts)
+  const suppliers = mergeSuppliers(scenarioData.suppliers, customSuppliers)
+  const products = mergeProducts(scenarioData.products, customProducts)
   const consignments = mergeDatasets(scenarioData.consignments, customConsignments)
   const agents = mergeDatasets(staticAgents, customAgents)
   const documents = mergeDatasets(scenarioData.documents, customDocuments)
@@ -356,6 +580,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const eudrEvidenceAttachments = mergeDatasets(scenarioData.eudrEvidenceAttachments, customEudrEvidenceAttachments)
   const plots = mergeDatasets(scenarioData.plots, customPlots)
   const deforestationCases = mergeDatasets(scenarioData.deforestationCases, customDeforestationCases)
+  const ddsSubmissions = mergeDatasets(scenarioData.ddsSubmissions ?? [], customDdsSubmissions)
+  const legalityDossiers = mergeDatasets(scenarioData.legalityDossiers ?? [], customLegalityDossiers)
 
   // CRUD Implementations
   const addSupplier = (record: SupplierRecord) => {
@@ -466,6 +692,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCustomEudrEvidenceAttachments(records)
     localStorage.setItem(`gfi_custom_eudr_evidence_${scenarioId}`, JSON.stringify(records))
   }
+  const persistDdsSubmissions = (records: DdsSubmissionRecord[]) => {
+    setCustomDdsSubmissions(records)
+    localStorage.setItem(`gfi_custom_dds_submissions_${scenarioId}`, JSON.stringify(records))
+  }
+  const persistLegalityDossiers = (records: LegalityDossierRecord[]) => {
+    setCustomLegalityDossiers(records)
+    localStorage.setItem(`gfi_custom_legality_dossiers_${scenarioId}`, JSON.stringify(records))
+  }
 
   const editPlot = (record: PlotRecord) => {
     const idx = customPlots.findIndex(r => r.id === record.id)
@@ -508,6 +742,93 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
   const addEudrEvidenceAttachment = (record: EudrEvidenceAttachment) => {
     persistEudrEvidenceAttachments([...customEudrEvidenceAttachments, record])
+  }
+
+  const addOrEditDdsSubmission = (record: DdsSubmissionRecord) => {
+    const idx = customDdsSubmissions.findIndex(r => r.id === record.id)
+    const next = idx >= 0 ? customDdsSubmissions.map(r => r.id === record.id ? record : r) : [...customDdsSubmissions, record]
+    persistDdsSubmissions(next)
+  }
+
+  const addOrEditLegalityDossier = (record: LegalityDossierRecord) => {
+    const normalizedRecord = {
+      ...record,
+      overallStatus: summarizeLegalityDossier(record.documents),
+    }
+    const idx = customLegalityDossiers.findIndex(r => r.id === record.id)
+    const next = idx >= 0 ? customLegalityDossiers.map(r => r.id === record.id ? normalizedRecord : r) : [...customLegalityDossiers, normalizedRecord]
+    persistLegalityDossiers(next)
+  }
+
+  const addLegalityEvidenceDocument: AuthContextType["addLegalityEvidenceDocument"] = ({ dossierId, document, actor }) => {
+    const target = legalityDossiers.find(dossier => dossier.id === dossierId)
+    if (!target) return
+
+    const nextDocuments = target.documents.map(existing =>
+      existing.id === document.id
+        ? { ...existing, ...document }
+        : existing
+    )
+    const nextStatus = summarizeLegalityDossier(nextDocuments)
+    const nextDossier: LegalityDossierRecord = {
+      ...target,
+      documents: nextDocuments,
+      overallStatus: nextStatus,
+      auditTrail: appendAuditEvent(target.auditTrail, {
+        timestamp: new Date().toISOString(),
+        actor: actor ?? "Compliance Officer",
+        eventType: document.fileName ? "DOCUMENT_UPLOADED" : "DOCUMENT_REPLACED",
+        message: `${document.sampleDocumentLabel} ${document.fileName ? `uploaded as ${document.fileName}` : "was updated"}.`,
+      }),
+    }
+    addOrEditLegalityDossier(nextDossier)
+  }
+
+  const verifyLegalityEvidenceDocument: AuthContextType["verifyLegalityEvidenceDocument"] = (input) => {
+    const target = legalityDossiers.find(dossier => dossier.id === input.dossierId)
+    if (!target) return
+
+    const nextDocuments = target.documents.map(document =>
+      document.id === input.documentId
+        ? {
+            ...document,
+            verificationStatus: input.verificationStatus,
+            verificationNote: input.verificationNote,
+            validFrom: input.validFrom ?? document.validFrom,
+            validTo: input.validTo ?? document.validTo,
+            countryRegistrarRef: input.countryRegistrarRef ?? document.countryRegistrarRef,
+            customsSealRef: input.customsSealRef ?? document.customsSealRef,
+          }
+        : document
+    )
+    const nextStatus = summarizeLegalityDossier(nextDocuments)
+    const eventType =
+      input.verificationStatus === "VERIFIED"
+        ? "DOCUMENT_VERIFIED"
+        : input.verificationStatus === "EXPIRED"
+          ? "DOCUMENT_EXPIRED"
+          : "DOCUMENT_REJECTED"
+    const nextDossier: LegalityDossierRecord = {
+      ...target,
+      documents: nextDocuments,
+      overallStatus: nextStatus,
+      auditTrail: appendAuditEvent(target.auditTrail, {
+        timestamp: new Date().toISOString(),
+        actor: input.actor ?? "Compliance Reviewer",
+        eventType,
+        message: `Document review status changed to ${input.verificationStatus.replace(/_/g, " ")}.`,
+      }),
+    }
+    addOrEditLegalityDossier(nextDossier)
+  }
+
+  const updateIngredientComplianceState: AuthContextType["updateIngredientComplianceState"] = ({ productId, ingredientId, changes }) => {
+    const product = products.find(p => p.id === productId)
+    if (!product) return
+    const updatedIngredients = product.ingredients.map(ing =>
+      ing.id === ingredientId ? { ...ing, ...changes } : ing
+    )
+    editProduct({ ...product, ingredients: updatedIngredients })
   }
 
   const generateEudrFormRequest: AuthContextType["generateEudrFormRequest"] = (input) => {
@@ -622,23 +943,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     editProduct({ ...product, ingredients: updatedIngredients })
   }
 
-  const session: UserSession = {
-    user: {
-      id: 'd9b0429f-f529-470f-ad72-6878c772cb33',
-      name: 'Mg Operator',
-      email: 'mg.compliance@fos-eudr.local',
-      role: role,
-      organizationId: orgId
-    }
-  }
+  const session: UserSession | null = isAuthenticated
+    ? {
+        user: {
+          id: accountProfile.id,
+          name: accountProfile.displayName,
+          email: accountProfile.email,
+          role,
+          organizationId: accountProfile.organizationId,
+        },
+      }
+    : null
 
   const setRole = (newRole: UserRole) => {
     setRoleState(newRole)
+    const nextAccount = { ...accountProfile, role: newRole }
+    setAccountProfile(nextAccount)
+    persistProfilePatch({ account: nextAccount })
   }
 
   return (
     <AuthContext.Provider value={{
       session,
+      isHydrated,
+      accountProfile,
+      organizationProfile,
+      login,
+      logout,
+      updateAccountProfile,
+      updateOrganizationProfile,
       setRole,
       scenarioId,
       setScenarioId,
@@ -657,6 +990,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       eudrEvidenceAttachments,
       plots,
       deforestationCases,
+      ddsSubmissions,
+      legalityDossiers,
       addSupplier,
       editSupplier,
       addProduct,
@@ -681,6 +1016,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       addEudrEvidenceAttachment,
       editPlot,
       editDeforestationCase,
+      addOrEditDdsSubmission,
+      addOrEditLegalityDossier,
+      addLegalityEvidenceDocument,
+      verifyLegalityEvidenceDocument,
+      updateIngredientComplianceState,
       generateEudrFormRequest,
       propagateChainCompletion,
       updateIngredientChainStatus,

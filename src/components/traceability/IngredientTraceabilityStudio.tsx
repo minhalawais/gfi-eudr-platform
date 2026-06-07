@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
-import { Users, Layers, ShieldAlert, Activity, CheckCircle2, X, Shield, Ship, FileText, Award } from "lucide-react";
+import { Send, Copy, Eye } from "lucide-react";
 
 function getCommodityIcon(name: string): string {
   const n = name.toLowerCase();
@@ -20,13 +20,23 @@ import {
   TraceabilityNodeDetails,
 } from "@/lib/ingredient-traceability";
 import { SupplyChainNode } from "@/lib/gfi-dummy-data";
+import { useSession } from "@/components/ui/PermissionGuard";
+import {
+  ModalShell,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  FormField,
+  FormGrid,
+  FormActions,
+  Input,
+  Select,
+} from "@/components/ui";
 
 type StatusFilter = SupplyChainNode["status"] | "ALL";
 type ActorFilter = SupplyChainNode["actorType"] | "ALL";
 type CountryFilter = string | "ALL";
 type FormFilter = "INTERMEDIARY" | "FARMER" | "ALL";
-type MobileTab = "summary" | "lineage" | "inspector";
-
 interface IngredientTraceabilityStudioProps {
   viewModel: IngredientTraceabilityViewModel;
   selectedRootId: string;
@@ -53,17 +63,6 @@ function toSentenceCase(value: string): string {
     .toLowerCase()
     .replace(/_/g, " ")
     .replace(/\b\w/g, (part) => part.toUpperCase());
-}
-
-function formatDate(date: string | null): string {
-  if (!date || date === "Current") {
-    return "Current";
-  }
-  return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function NodeGlyph({ actorType }: { actorType: SupplyChainNode["actorType"] }) {
@@ -149,61 +148,204 @@ function NodeCard(props: {
   canToggle: boolean;
   onSelect: () => void;
   onToggle: () => void;
+  onViewDeclaration: (details: TraceabilityNodeDetails) => void;
+  onAddSibling: (node: SupplyChainNode) => void;
 }) {
-  const { details, isSelected, isOnSelectedPath, isCollapsed, canToggle, onSelect, onToggle } = props;
-  const { node, request, evidenceSummary } = details;
+  const { details, isSelected, isOnSelectedPath, isCollapsed, canToggle, onSelect, onToggle, onViewDeclaration, onAddSibling } = props;
+  const { node, evidenceSummary } = details;
 
   return (
-    <button
-      type="button"
-      data-actor={node.actorType}
-      data-status={node.status}
-      className={`traceability-node-card${isSelected ? " is-selected" : ""}${isOnSelectedPath ? " is-on-path" : ""}`}
-      onClick={onSelect}
-    >
-      <div className="traceability-node-card__eyebrow">
-        <span>{details.actorDisplayLabel}</span>
-        <span>Tier {node.tier}</span>
-      </div>
-      <div className="traceability-node-card__header">
-        <div className="traceability-node-card__identity">
-          <span className="traceability-node-card__glyph">
-            <NodeGlyph actorType={node.actorType} />
-          </span>
-          <div>
-            <strong>{node.entityName}</strong>
-            <span>{node.country}</span>
-          </div>
+    <div className="traceability-node-card-shell">
+      <div
+        data-actor={node.actorType}
+        data-status={node.status}
+        className={`traceability-node-card${isSelected ? " is-selected" : ""}${isOnSelectedPath ? " is-on-path" : ""}`}
+      >
+      <div
+        role="button"
+        tabIndex={0}
+        className="traceability-node-card__selectable"
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+      >
+      {/* Top Row: Eyebrow Roles & Status tag */}
+      <div className="traceability-node-card__eyebrow flex items-center justify-between w-full">
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span>{details.actorDisplayLabel}</span>
+          <span style={{ opacity: 0.3 }}>·</span>
+          <span>Tier {node.tier}</span>
         </div>
-        <span className={`trace-chip trace-chip--${STATUS_ACCENTS[node.status]}`}>{toSentenceCase(node.status)}</span>
+        <span className={`trace-chip trace-chip--xs trace-chip--${STATUS_ACCENTS[node.status]}`}>{toSentenceCase(node.status)}</span>
       </div>
 
-      <div className="traceability-node-card__meta">
-        <span>{node.materialName}</span>
-        <span>{Math.round(node.volumeContributionPercent)}% share</span>
+      {/* Identity Row: Icon + Name & Country */}
+      <div className="traceability-node-card__identity flex items-start gap-2.5 w-full min-w-0">
+        <span className="traceability-node-card__glyph flex-shrink-0">
+          <NodeGlyph actorType={node.actorType} />
+        </span>
+        <div className="min-w-0 text-left" style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+          <strong className="traceability-node-card__name block text-xs font-extrabold text-brand-primary" title={node.entityName}>
+            {node.entityName}
+          </strong>
+          <span className="traceability-node-card__country block text-[10px] text-text-secondary">{node.country}</span>
+        </div>
       </div>
 
-      <div className="traceability-node-card__badges">
-        <span className="trace-chip trace-chip--outline">{details.formPartyLabel}</span>
-        <span className={`trace-chip trace-chip--${evidenceSummary.geolocationReady === false || evidenceSummary.missing > 0 ? "blocked" : evidenceSummary.attached > 0 ? "ready" : "muted"}`}>
+      {/* Material & Volume Line (Inline) */}
+      <div className="traceability-node-card__meta-line flex items-center justify-between w-full text-[10.5px] leading-tight min-w-0">
+        <span className="traceability-node-card__material truncate font-medium text-text-secondary" title={node.materialName}>
+          {node.materialName}
+        </span>
+        <span className="traceability-node-card__share shrink-0 font-bold text-brand-primary ml-2">
+          {Math.round(node.volumeContributionPercent)}% share
+        </span>
+      </div>
+
+      {/* Geolocation & Compliance Badges */}
+      <div className="traceability-node-card__badges flex items-center gap-1.5 flex-wrap w-full">
+        <span className="trace-chip trace-chip--xs trace-chip--outline">{details.formPartyLabel}</span>
+        <span className={`trace-chip trace-chip--xs trace-chip--${evidenceSummary.geolocationReady === false || evidenceSummary.missing > 0 ? "blocked" : evidenceSummary.attached > 0 ? "ready" : "muted"}`}>
           {evidenceSummary.stateLabel}
         </span>
       </div>
 
-      {request && <div className="traceability-node-card__token">{request.tokenLabel}</div>}
+      {/* Compliance Evidence Progress Bar */}
+      {(() => {
+        const totalEvidence = (evidenceSummary.attached ?? 0) + (evidenceSummary.missing ?? 0);
+        const progressWidth = totalEvidence > 0 ? Math.round((evidenceSummary.attached / totalEvidence) * 100) : (node.status === "COMPLETE" ? 100 : 0);
+        return (
+          <div className="traceability-node-card__progress-container flex flex-col gap-1 w-full">
+            <div className="flex justify-between items-center text-[8.5px] font-bold text-text-secondary leading-none">
+              <span>Compliance Evidence</span>
+              <span>{progressWidth}%</span>
+            </div>
+            <div className="traceability-node-card__bar">
+              <div
+                className="traceability-node-card__bar-fill"
+                style={{
+                  width: `${progressWidth}%`,
+                  background: node.status === "COMPLETE" ? "#10b981" : node.status === "BLOCKED" || node.status === "GAPS_FOUND" ? "#ef4444" : "#f59e0b",
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
-      {canToggle && (
-        <span
-          className="traceability-node-card__toggle"
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggle();
-          }}
-        >
-          {isCollapsed ? "Expand subtree" : "Hide subtree"}
-        </span>
-      )}
-    </button>
+      </div>
+      <button
+        type="button"
+        className="traceability-node-card__declaration-action"
+        onClick={(event) => {
+          event.stopPropagation();
+          onViewDeclaration(details);
+        }}
+      >
+        <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>View declaration form</span>
+      </button>
+      </div>
+
+      <button
+        type="button"
+        className="traceability-node-card__branch-action"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAddSibling(node);
+        }}
+      >
+        <span className="traceability-node-card__branch-action-icon" aria-hidden="true">+</span>
+        <span>Add Parallel Actor</span>
+      </button>
+    </div>
+  );
+}
+
+/* ── GFI DDS Reference Builder ────────────────────────── */
+function buildDDSRef(ingredientName: string): string {
+  const code = ingredientName
+    .replace(/[^a-zA-Z\s]/g, "")
+    .split(/\s+/)
+    .map((w) => w.slice(0, 2).toUpperCase())
+    .join("")
+    .slice(0, 4)
+    .padEnd(3, "X");
+  return `DDS-GFI-2026-${code}`;
+}
+
+/* ── GFI Anchor Card — Premium EU Operator Node ────────── */
+function GFIAnchorCard({ ingredientName, productName }: { ingredientName: string; productName: string }) {
+  const ddsRef = buildDDSRef(ingredientName);
+  const commodityIcon = getCommodityIcon(ingredientName);
+  return (
+    <div className="gfi-anchor-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: "6px" }}>
+      {/* Top Center: Circular JoJo logo inside gold hexagonal frame */}
+      <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
+        <svg viewBox="0 0 48 48" width="40" height="40" style={{ display: "block", position: "absolute", top: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="gfi-hex-grad-circle" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#F4C400" />
+              <stop offset="100%" stopColor="#D4A800" />
+            </linearGradient>
+          </defs>
+          <polygon points="24,2 43,12.5 43,35.5 24,46 5,35.5 5,12.5" fill="url(#gfi-hex-grad-circle)" />
+          <polygon points="24,6 40,15.5 40,32.5 24,42 8,32.5 8,15.5" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1" />
+        </svg>
+        <div style={{ position: "absolute", inset: "4.5px", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: "50%", background: "#FFFFFF", padding: "1px", boxShadow: "0 1.5px 3px rgba(0,0,0,0.15)" }}>
+          <img src="/jojo_logo.png" alt="JoJo Logo" style={{ width: "90%", height: "90%", objectFit: "contain" }} />
+        </div>
+      </div>
+
+      {/* Identity Info */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+        <div style={{ color: "#FFFFFF", fontSize: "10.5px", fontWeight: 800, lineHeight: 1.2, letterSpacing: "0.01em" }}>
+          Gujranwala Food Industries
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span style={{ fontSize: "7px", fontWeight: 850, letterSpacing: "0.06em", color: "#F4C400", background: "rgba(244,196,0,0.12)", border: "1px solid rgba(244,196,0,0.35)", borderRadius: "3px", padding: "1px 4px" }}>
+            EU OPERATOR
+          </span>
+          <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.5)" }}>🇵🇰 PK</span>
+        </div>
+      </div>
+
+      {/* Stars divider */}
+      <div style={{ display: "flex", alignItems: "center", gap: "3px", width: "70%" }}>
+        <div style={{ flex: 1, height: "1px", background: "rgba(244,196,0,0.15)" }} />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <span key={i} style={{ fontSize: "5px", color: "rgba(244,196,0,0.4)", lineHeight: 1 }}>★</span>
+        ))}
+        <div style={{ flex: 1, height: "1px", background: "rgba(244,196,0,0.15)" }} />
+      </div>
+
+      {/* Context Details */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", width: "90%" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "3px", justifyContent: "center", width: "100%" }}>
+          <span style={{ fontSize: "10px", lineHeight: 1 }}>{commodityIcon}</span>
+          <span style={{ fontSize: "9.5px", color: "#FFFFFF", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ingredientName}>
+            {ingredientName}
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "3px", justifyContent: "center", width: "100%", opacity: 0.8 }}>
+          <span style={{ fontSize: "10px", lineHeight: 1 }}>📦</span>
+          <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.75)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={productName}>
+            {productName}
+          </span>
+        </div>
+      </div>
+
+      {/* Status & References */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px", borderTop: "1px solid rgba(244,196,0,0.1)", paddingTop: "4px", width: "80%", marginTop: "1px" }}>
+        <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.5)", fontFamily: "monospace", fontWeight: 700 }} title={ddsRef}>{ddsRef}</span>
+        <span style={{ fontSize: "7px", fontWeight: 800, color: "#10b981", background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "3px", padding: "1px 4px", letterSpacing: "0.04em" }}>✓ COMPLETE</span>
+        <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.25)", fontFamily: "monospace", marginTop: "1px" }}>EORI: PK-GFI-0001</span>
+      </div>
+    </div>
   );
 }
 
@@ -215,25 +357,14 @@ function RootSelectorCard(props: {
   const { root, isSelected, onClick } = props;
 
   return (
-    <button type="button" className={`traceability-root-card${isSelected ? " is-selected" : ""}`} onClick={onClick}>
-      <div className="traceability-root-card__top flex items-start gap-2">
+    <button type="button" className={`traceability-root-card w-full min-w-0 text-left${isSelected ? " is-selected" : ""}`} onClick={onClick}>
+      <div className="traceability-root-card__top flex items-start gap-2 w-full min-w-0">
         <div className="traceability-root-card__title-wrap flex items-start gap-2.5 flex-1 min-w-0">
-          <span className="text-xl shrink-0 mt-0.5" role="img" aria-label={root.ingredientName}>
-            {getCommodityIcon(root.ingredientName)}
-          </span>
-          <div className="grid gap-0.5 text-left min-w-0">
-            <strong className="text-xs font-extrabold text-brand-primary truncate block">{root.ingredientName}</strong>
-            <span className="traceability-root-card__subline text-[10px] text-text-secondary leading-normal truncate block">{root.productName} • {root.directSupplierName}</span>
+          <div className="grid gap-0.5 text-left min-w-0 w-full">
+            <strong className="text-xs font-extrabold text-brand-primary truncate block w-full">{root.ingredientName}</strong>
+            <span className="traceability-root-card__subline text-[10px] text-text-secondary leading-normal truncate block w-full">{root.productName} • {root.directSupplierName}</span>
           </div>
         </div>
-        <span className={`trace-chip shrink-0 text-[8px] px-2 py-0.5 trace-chip--${root.shipmentImpact === "READY" ? "ready" : root.shipmentImpact === "BLOCKED" ? "blocked" : "review"}`}>
-          {root.shipmentImpact === "AT_RISK" ? "At Risk" : toSentenceCase(root.shipmentImpact)}
-        </span>
-      </div>
-      <div className="traceability-root-card__stats flex justify-between text-[10px] text-text-muted mt-1 border-t border-border-soft/40 pt-2 font-medium">
-        <span>{root.branchCount} branches</span>
-        <span>{root.farmerCount} producers</span>
-        <span>{root.incompleteLeafCount} gaps</span>
       </div>
     </button>
   );
@@ -258,9 +389,26 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
   const [countryFilter, setCountryFilter] = useState<CountryFilter>("ALL");
   const [formFilter, setFormFilter] = useState<FormFilter>("ALL");
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("summary");
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isDeclarationModalOpen, setIsDeclarationModalOpen] = useState(false);
+  const [declarationActorId, setDeclarationActorId] = useState("");
+  const [declarationModalToken, setDeclarationModalToken] = useState("");
+  const [declarationNotice, setDeclarationNotice] = useState<string | null>(null);
+
+  const { addSupplyChainNode, addSupplyChainEdge, eudrFormRequests, generateEudrFormRequest, suppliers } = useSession();
+
+  // Add Actor Modal State
+  const [isAddActorModalOpen, setIsAddActorModalOpen] = useState(false);
+  const [addActorMode, setAddActorMode] = useState<"SIBLING" | "CHILD">("SIBLING");
+  const [addActorTargetNode, setAddActorTargetNode] = useState<SupplyChainNode | null>(null);
+
+  // Modal Form State
+  const [newActorName, setNewActorName] = useState("");
+  const [newActorType, setNewActorType] = useState<SupplyChainNode["actorType"]>("TRADER");
+  const [newActorCountry, setNewActorCountry] = useState("Indonesia");
+  const [newActorMaterial, setNewActorMaterial] = useState("");
+  const [newActorVolume, setNewActorVolume] = useState(100);
+  const [newActorStatus, setNewActorStatus] = useState<SupplyChainNode["status"]>("COMPLETE");
 
   const selectedRoot = viewModel.rootById[selectedRootId] ?? viewModel.roots[0];
 
@@ -272,9 +420,119 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
     }
   }, [selectedNodeId, selectedRoot, viewModel.nodeDetailsById]);
 
+  useEffect(() => {
+    if (!isMapFullscreen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMapFullscreen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMapFullscreen]);
+
   const selectedNode = selectedNodeId ? viewModel.nodeDetailsById[selectedNodeId] : null;
   const selectedPathSet = new Set(selectedNode?.pathNodeIds ?? []);
 
+  const getLatestRequestForNode = (nodeId: string) =>
+    eudrFormRequests
+      .filter((request) => request.targetNodeId === nodeId && request.status !== "CLOSED")
+      .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt))
+      .at(-1) ?? null;
+
+  const getDeclarationRequestForDetails = (details: TraceabilityNodeDetails) =>
+    getLatestRequestForNode(details.node.id) ?? details.request;
+
+  const buildDeclarationLink = (tokenLabel: string) =>
+    `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${tokenLabel}`;
+
+  const withDeclarationNotice = (message: string) => {
+    setDeclarationNotice(message);
+    window.setTimeout(() => setDeclarationNotice(null), 4000);
+  };
+
+  const ensureDeclarationRequest = (details: TraceabilityNodeDetails) => {
+    const existing = getDeclarationRequestForDetails(details);
+    if (existing) return existing;
+
+    const supplier = suppliers.find((item) => item.id === details.node.supplierId);
+    const formType = details.formType === "FARMER" ? "FARMER" : "INTERMEDIARY";
+    const parentRequestId = details.node.parentNodeId ? getLatestRequestForNode(details.node.parentNodeId)?.id ?? null : null;
+
+    return generateEudrFormRequest({
+      supplierId: details.node.supplierId,
+      supplierName: supplier?.name ?? details.node.entityName,
+      productId: details.node.productId,
+      ingredientId: details.node.ingredientId,
+      commodity: details.node.commodity,
+      materialName: details.node.materialName,
+      formType,
+      parentNodeId: details.node.parentNodeId,
+      parentRequestId,
+      email: supplier?.email ?? "",
+      entityName: details.node.entityName,
+      country: details.node.country,
+      actorType: details.node.actorType,
+      volumeContributionPercent: details.node.volumeContributionPercent,
+    });
+  };
+
+  const handleCopyDeclarationLink = async (details: TraceabilityNodeDetails) => {
+    try {
+      const request = ensureDeclarationRequest(details);
+      const url = buildDeclarationLink(request.tokenLabel);
+      await navigator.clipboard.writeText(url);
+      withDeclarationNotice(`Declaration link copied for ${details.node.entityName}.`);
+    } catch {
+      withDeclarationNotice("The declaration link could not be copied. Please try again.");
+    }
+  };
+
+  const handleSendDeclarationEmail = (details: TraceabilityNodeDetails) => {
+    try {
+      const request = ensureDeclarationRequest(details);
+      const recipient = request.email || suppliers.find((item) => item.id === details.node.supplierId)?.email;
+      if (!recipient) {
+        withDeclarationNotice(`No email address is available for ${details.node.entityName}.`);
+        return;
+      }
+
+      const url = buildDeclarationLink(request.tokenLabel);
+      const subject = encodeURIComponent(`Declaration form request - ${details.node.entityName}`);
+      const body = encodeURIComponent(
+        [
+          `Hello ${details.node.entityName},`,
+          "",
+          `Please complete the ${details.formPartyLabel.toLowerCase()} for ${selectedRoot.ingredientName} in ${selectedRoot.productName}.`,
+          `Request token: ${request.tokenLabel}`,
+          `Portal link: ${url}`,
+          "",
+          "Regards,",
+          "GFI Compliance",
+        ].join("\n"),
+      );
+      withDeclarationNotice(`Email draft prepared for ${details.node.entityName}.`);
+      window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+    } catch {
+      withDeclarationNotice("The declaration email could not be prepared. Please try again.");
+    }
+  };
+
+  const handleViewDeclarationForm = (details: TraceabilityNodeDetails) => {
+    const request = ensureDeclarationRequest(details);
+    setSelectedNodeId(details.node.id);
+    setDeclarationActorId(details.node.id);
+    setDeclarationModalToken(request.tokenLabel);
+    setDeclarationNotice(null);
+    setIsDeclarationModalOpen(true);
+  };
+
+  const closeDeclarationWorkspace = () => {
+    setIsDeclarationModalOpen(false);
+    setDeclarationActorId("");
+    setDeclarationModalToken("");
+    setDeclarationNotice(null);
+  };
+
+  const declarationActor = declarationActorId ? viewModel.nodeDetailsById[declarationActorId] : null;
   const countryOptions = useMemo(
     () => Array.from(new Set((selectedRoot?.nodeIds ?? []).map((nodeId) => viewModel.nodeDetailsById[nodeId].node.country))).sort(),
     [selectedRoot, viewModel.nodeDetailsById],
@@ -319,9 +577,10 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
     );
   }
 
-  /* ── SVG Tree Layout Engine ────────────────────────────── */
+  /* ── SVG Tree Layout Engine (Horizontal Left → Right) ──── */
   const SVG_NODE_W = 290;
-  const SVG_NODE_H = 230;
+  const SVG_NODE_CARD_H = 274;
+  const SVG_NODE_LAYOUT_H = 320;
   const SVG_TIER_GAP = 80;
   const SVG_SIBLING_GAP = 24;
   const SVG_PAD = 40;
@@ -348,49 +607,96 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
     }
   };
 
-  const computeSubtreeWidth = (nodeId: string): number => {
+  /* Measures how much vertical height a subtree occupies */
+  const computeSubtreeHeight = (nodeId: string): number => {
     const d = viewModel.nodeDetailsById[nodeId];
     if (!d || !subtreeVisible(nodeId)) return 0;
     const isCol = collapsedNodeIds.includes(nodeId);
     const kids = isCol ? [] : d.childIds.filter((c) => subtreeVisible(c));
-    if (kids.length === 0) return SVG_NODE_W;
-    const childWidths = kids.map((k) => computeSubtreeWidth(k));
-    return childWidths.reduce((a, b) => a + b, 0) + (kids.length - 1) * SVG_SIBLING_GAP;
+    if (kids.length === 0) return SVG_NODE_LAYOUT_H;
+    const childHeights = kids.map((k) => computeSubtreeHeight(k));
+    return childHeights.reduce((a, b) => a + b, 0) + (kids.length - 1) * SVG_SIBLING_GAP;
   };
 
-  const computePositions = (rootId: string) => {
+  /* Places nodes horizontally: x = tier column, y = vertical center of subtree */
+  const computePositions = (rootIds: string[]) => {
     const positions = new Map<string, { x: number; y: number }>();
-    const assign = (nodeId: string, depth: number, leftEdge: number) => {
+    const assign = (nodeId: string, depth: number, topEdge: number) => {
       const d = viewModel.nodeDetailsById[nodeId];
       if (!d || !subtreeVisible(nodeId)) return;
-      const sw = computeSubtreeWidth(nodeId);
-      positions.set(nodeId, { x: leftEdge + sw / 2, y: depth * (SVG_NODE_H + SVG_TIER_GAP) });
+      const sh = computeSubtreeHeight(nodeId);
+      positions.set(nodeId, {
+        x: depth * (SVG_NODE_W + SVG_TIER_GAP),
+        y: topEdge + sh / 2 - SVG_NODE_LAYOUT_H / 2,
+      });
       const isCol = collapsedNodeIds.includes(nodeId);
       const kids = isCol ? [] : d.childIds.filter((c) => subtreeVisible(c));
-      let cursor = leftEdge;
-      kids.forEach((k) => { const cw = computeSubtreeWidth(k); assign(k, depth + 1, cursor); cursor += cw + SVG_SIBLING_GAP; });
+      let cursor = topEdge;
+      kids.forEach((k) => {
+        const ch = computeSubtreeHeight(k);
+        assign(k, depth + 1, cursor);
+        cursor += ch + SVG_SIBLING_GAP;
+      });
     };
-    const totalW = computeSubtreeWidth(rootId);
-    assign(rootId, 0, 0);
+    const visibleRootIds = rootIds.filter((rootId) => subtreeVisible(rootId));
+    let rootCursor = 0;
+    visibleRootIds.forEach((rootId) => {
+      const rootHeight = computeSubtreeHeight(rootId);
+      assign(rootId, 0, rootCursor);
+      rootCursor += rootHeight + SVG_SIBLING_GAP;
+    });
+    const totalH = Math.max(
+      SVG_NODE_LAYOUT_H,
+      rootCursor > 0 ? rootCursor - SVG_SIBLING_GAP : 0,
+    );
     let maxDepth = 0;
-    positions.forEach((p) => { const d = p.y / (SVG_NODE_H + SVG_TIER_GAP); if (d > maxDepth) maxDepth = d; });
-    return { positions, width: totalW, height: (maxDepth + 1) * SVG_NODE_H + maxDepth * SVG_TIER_GAP };
+    positions.forEach((p) => {
+      const col = SVG_NODE_W + SVG_TIER_GAP > 0 ? Math.round(p.x / (SVG_NODE_W + SVG_TIER_GAP)) : 0;
+      if (col > maxDepth) maxDepth = col;
+    });
+    const width = (maxDepth + 1) * SVG_NODE_W + maxDepth * SVG_TIER_GAP;
+    return { positions, width, height: totalH };
   };
 
-  const bezierD = (x1: number, y1: number, x2: number, y2: number) => {
-    const midY = (y1 + y2) / 2;
-    return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+  /* Horizontal S-curve: flows right from parent to child */
+  const bezierH = (x1: number, y1: number, x2: number, y2: number) => {
+    const midX = (x1 + x2) / 2;
+    return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
   };
 
-  const renderSVGTree = () => {
-    const layout = computePositions(selectedRoot.rootId);
+  const renderSVGTree = (instanceId: "inline" | "fullscreen") => {
+    const entryNodeIds = selectedRoot.nodeIds.filter(
+      (nodeId) => viewModel.nodeDetailsById[nodeId]?.node.parentNodeId === null,
+    );
+    const layout = computePositions(entryNodeIds);
     if (layout.positions.size === 0) return <p className="traceability-empty-state" style={{ color: "#94a3b8" }}>No visible nodes match the current filters.</p>;
-    const { positions, width: tw, height: th } = layout;
-    const totalW = tw + SVG_PAD * 2;
+    const { width: tw, height: th } = layout;
+
+    // Shift all existing nodes right by one column to insert GFI anchor at position 0
+    const COLUMN_SHIFT = SVG_NODE_W + SVG_TIER_GAP;
+    const positions = new Map(
+      Array.from(layout.positions.entries()).map(([id, pos]) => [id, { x: pos.x + COLUMN_SHIFT, y: pos.y }])
+    );
+
+    const totalW = tw + COLUMN_SHIFT + SVG_PAD * 2 + 50;
     const totalH = th + SVG_PAD * 2;
 
-    // Build connections
-    const conns: { id: string; d: string; cls: string; midX: number; midY: number }[] = [];
+    // Center the GFI anchor against all parallel chain entry actors.
+    const gfiCardY = Math.max(0, th / 2 - SVG_NODE_CARD_H / 2);
+
+    // Build all connectors: GFI→parallel entries (gold) + standard node-to-node
+    const conns: { id: string; d: string; cls: string; midX: number; midY: number; isGfi?: boolean }[] = [];
+
+    entryNodeIds.forEach((entryNodeId) => {
+      const rootPos = positions.get(entryNodeId);
+      if (!rootPos) return;
+      const x1 = SVG_PAD + 230;                          // GFI right edge (circle boundary)
+      const y1 = gfiCardY + SVG_NODE_CARD_H / 2 + SVG_PAD;    // GFI vertical center
+      const x2 = rootPos.x + SVG_PAD;                     // root left edge
+      const y2 = rootPos.y + SVG_NODE_CARD_H / 2 + SVG_PAD;   // root card center
+      conns.push({ id: `gfi-${entryNodeId}`, d: bezierH(x1, y1, x2, y2), cls: "complete", midX: (x1 + x2) / 2, midY: (y1 + y2) / 2, isGfi: true });
+    });
+
     positions.forEach((pos, nodeId) => {
       const det = viewModel.nodeDetailsById[nodeId];
       if (!det) return;
@@ -399,18 +705,20 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
       kids.forEach((childId) => {
         const cp = positions.get(childId);
         if (!cp) return;
-        const x1 = pos.x + SVG_PAD, y1 = pos.y + SVG_NODE_H + SVG_PAD;
-        const x2 = cp.x + SVG_PAD, y2 = cp.y + SVG_PAD;
+        const x1 = pos.x + SVG_NODE_W + SVG_PAD;    // parent right edge
+        const y1 = pos.y + SVG_NODE_CARD_H / 2 + SVG_PAD; // parent card center
+        const x2 = cp.x + SVG_PAD;                    // child left edge
+        const y2 = cp.y + SVG_NODE_CARD_H / 2 + SVG_PAD;  // child card center
         const cls = statusToCls(viewModel.nodeDetailsById[childId]?.node.status ?? "");
-        conns.push({ id: `${nodeId}-${childId}`, d: bezierD(x1, y1, x2, y2), cls, midX: (x1 + x2) / 2, midY: (y1 + y2) / 2 });
+        conns.push({ id: `${nodeId}-${childId}`, d: bezierH(x1, y1, x2, y2), cls, midX: (x1 + x2) / 2, midY: (y1 + y2) / 2 });
       });
     });
 
     return (
-      <div style={{ position: "relative", width: totalW, minHeight: totalH, margin: "0 auto" }}>
+      <div style={{ position: "relative", width: totalW, minHeight: totalH }}>
         <svg className="supply-chain-svg" width={totalW} height={totalH} viewBox={`0 0 ${totalW} ${totalH}`}>
           <defs>
-            <filter id="supply-glow" x="-25%" y="-25%" width="150%" height="150%">
+            <filter id={`${instanceId}-supply-glow`} x="-25%" y="-25%" width="150%" height="150%">
               <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
@@ -422,28 +730,111 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
               <rect
                 x={c.midX - 4} y={c.midY - 4} width={8} height={8} rx={1}
                 transform={`rotate(45 ${c.midX} ${c.midY})`}
-                fill={statusToColor(c.cls)}
+                fill={c.isGfi ? "#F4C400" : statusToColor(c.cls)}
                 className="supply-checkpoint"
               />
             </g>
           ))}
+          {/* Leaf node extension lines */}
+          {Array.from(positions.entries()).map(([nodeId, pos]) => {
+            const det = viewModel.nodeDetailsById[nodeId];
+            if (!det) return null;
+            const hasVisibleKids = det.childIds.filter((c) => subtreeVisible(c)).length > 0;
+            if (hasVisibleKids) return null;
+            const lineX1 = pos.x + SVG_NODE_W + SVG_PAD;
+            const lineY = pos.y + SVG_NODE_CARD_H / 2 + SVG_PAD;
+            const lineX2 = lineX1 + 40;
+            return (
+              <path
+                key={`leaf-line-${nodeId}`}
+                d={`M ${lineX1} ${lineY} L ${lineX2} ${lineY}`}
+                stroke="rgba(14, 90, 70, 0.25)"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                fill="none"
+              />
+            );
+          })}
         </svg>
+
+        {/* GFI Anchor Card — leftmost node in every chain (styled as circular medallion) */}
+        <div className="supply-node-container" style={{ left: SVG_PAD, top: gfiCardY + SVG_PAD, width: 230 }}>
+          <GFIAnchorCard ingredientName={selectedRoot.ingredientName} productName={selectedRoot.productName} />
+        </div>
+
+        {/* Standard supply chain node cards */}
         {Array.from(positions.entries()).map(([nodeId, pos]) => {
           const det = viewModel.nodeDetailsById[nodeId];
           if (!det) return null;
           const hasVisibleKids = det.childIds.filter((c) => subtreeVisible(c)).length > 0;
           const isCol = collapsedNodeIds.includes(nodeId);
           return (
-            <div key={`card-${nodeId}`} className="supply-node-container" style={{ left: pos.x + SVG_PAD - SVG_NODE_W / 2, top: pos.y + SVG_PAD, width: SVG_NODE_W }}>
+            <div key={`card-${nodeId}`} className="supply-node-container" style={{ left: pos.x + SVG_PAD, top: pos.y + SVG_PAD, width: SVG_NODE_W }}>
               <NodeCard
                 details={det}
                 isSelected={selectedNodeId === nodeId}
                 isOnSelectedPath={selectedPathSet.has(nodeId)}
                 isCollapsed={isCol}
                 canToggle={hasVisibleKids}
-                onSelect={() => { setSelectedNodeId(nodeId); setMobileTab("inspector"); setIsInspectorOpen(true); }}
+                onSelect={() => setSelectedNodeId(nodeId)}
                 onToggle={() => setCollapsedNodeIds((cur) => cur.includes(nodeId) ? cur.filter((id) => id !== nodeId) : [...cur, nodeId])}
+                onViewDeclaration={handleViewDeclarationForm}
+                onAddSibling={(node) => {
+                  setAddActorTargetNode(node);
+                  setAddActorMode("SIBLING");
+                  setNewActorName("");
+                  setNewActorType(node.actorType);
+                  setNewActorCountry(node.country);
+                  setNewActorMaterial(node.materialName);
+                  setNewActorVolume(100);
+                  setNewActorStatus("COMPLETE");
+                  setIsAddActorModalOpen(true);
+                }}
               />
+            </div>
+          );
+        })}
+
+        {/* Leaf node plus buttons for adding upstream tier actors */}
+        {Array.from(positions.entries()).map(([nodeId, pos]) => {
+          const det = viewModel.nodeDetailsById[nodeId];
+          if (!det) return null;
+          const hasVisibleKids = det.childIds.filter((c) => subtreeVisible(c)).length > 0;
+          if (hasVisibleKids) return null;
+          const buttonLeft = pos.x + SVG_NODE_W + SVG_PAD + 40 - 14;
+          const buttonTop = pos.y + SVG_PAD + SVG_NODE_CARD_H / 2 - 14;
+          return (
+            <div
+              key={`leaf-add-${nodeId}`}
+              style={{
+                position: "absolute",
+                left: buttonLeft,
+                top: buttonTop,
+                zIndex: 10,
+              }}
+              className="group/btn"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setAddActorTargetNode(det.node);
+                  setAddActorMode("CHILD");
+                  setNewActorName("");
+                  setNewActorType("FARMER");
+                  setNewActorCountry("Indonesia");
+                  setNewActorMaterial(det.node.materialName);
+                  setNewActorVolume(100);
+                  setNewActorStatus("COMPLETE");
+                  setIsAddActorModalOpen(true);
+                }}
+                className="w-7 h-7 rounded-full bg-brand-primary text-white hover:bg-brand-primary-dark shadow-md flex items-center justify-center border border-white hover:scale-110 transition-all duration-150 cursor-pointer"
+                title="Add Upstream Supplier (New Tier)"
+              >
+                <span className="text-base font-extrabold leading-none">+</span>
+              </button>
+              <span className="absolute left-1/2 -translate-x-1/2 bottom-8 bg-brand-primary text-white text-[9.5px] font-extrabold px-2 py-0.5 rounded shadow-lg opacity-0 group-hover/btn:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-30">
+                Add new tier actor
+              </span>
             </div>
           );
         })}
@@ -451,474 +842,9 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
     );
   };
 
-  /* ── Journey Map (Fullscreen Horizontal Three-Zone) ──── */
-  const ORIGIN_ACTORS = new Set(["FARMER", "ESTATE", "COOPERATIVE"]);
-  const PROCESSING_ACTORS = new Set(["MILL", "PROCESSOR", "TRADER", "INTERMEDIARY", "DISTRIBUTOR", "EXPORTER"]);
 
-  const renderJourneyMap = () => {
-    const allIds = selectedRoot.nodeIds.filter((id) => subtreeVisible(id));
-    const originIds = allIds.filter((id) => ORIGIN_ACTORS.has(viewModel.nodeDetailsById[id]?.node.actorType));
-    const processingIds = allIds.filter((id) => PROCESSING_ACTORS.has(viewModel.nodeDetailsById[id]?.node.actorType));
-    const directSupplierNodeId = allIds.find(id => viewModel.nodeDetailsById[id]?.node.actorType === "DIRECT_SUPPLIER") || selectedRoot.rootId;
-    const otherProcessingIds = processingIds.filter(id => id !== directSupplierNodeId);
-
-    // Compute coordinates dynamically
-    const originNodes = originIds.map((id, index) => {
-      const total = originIds.length;
-      const y = total <= 1 ? 310 : 80 + (index * (460 / (total - 1)));
-      return { id, x: 170, y };
-    });
-
-    const centralNode = { id: directSupplierNodeId, x: 670, y: 310 };
-
-    const processingNodes = otherProcessingIds.map((id, index) => {
-      const coords = [
-        { x: 440, y: 130 }, // Top Left
-        { x: 440, y: 490 }, // Bottom Left
-        { x: 890, y: 150 }, // Top Right
-        { x: 890, y: 470 }  // Bottom Right
-      ];
-      return { id, ...coords[index % coords.length] };
-    });
-
-    const gatewayShield = { x: 1200, y: 160 };
-    const gatewayShip = { x: 1200, y: 370 };
-    const gatewayRing = { x: 1200, y: 510 };
-    const gatewayRibbon = { x: 1200, y: 610 };
-
-    const renderOriginPlot = (id: string, x: number, y: number, index: number) => {
-      const det = viewModel.nodeDetailsById[id];
-      if (!det) return null;
-      const areas = ["1.27 ha", "8.63 ha", "13.3 ha", "6.45 ha"];
-      const area = areas[index % areas.length];
-      const isSelected = selectedNodeId === id;
-
-      return (
-        <div
-          key={`plot-${id}`}
-          className={`journey-plot-card ${isSelected ? "is-selected" : ""}`}
-          style={{
-            position: "absolute",
-            left: x - 130,
-            top: y - 60,
-            width: 260,
-            height: 120,
-            zIndex: 10
-          }}
-          onClick={() => setSelectedNodeId(id)}
-        >
-          {/* Farmer Avatar & Verification */}
-          <div className="journey-plot-avatar-col">
-            <div className="journey-plot-avatar-glow">
-              <div className="journey-plot-avatar">
-                <Users className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div className="journey-plot-radar-line" />
-            </div>
-            <span className="journey-plot-verified-badge">✓ Geo</span>
-          </div>
-
-          {/* Plot Info & 3D Terrain */}
-          <div className="journey-plot-details-col">
-            <div className="journey-plot-title-wrap">
-              <strong className="truncate block max-w-[140px]">{det.node.entityName}</strong>
-              <span className="text-[9px] uppercase tracking-wider text-[#94a3b8] font-bold block mt-0.5">Tier 4 • {det.node.actorType}</span>
-            </div>
-
-            {/* Isometric SVG plot */}
-            <div className="journey-plot-terrain-wrap">
-              <svg className="journey-isometric-plot-svg" viewBox="0 0 100 60" width="100%" height="45">
-                <defs>
-                  <linearGradient id={`laser-glow-${id}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                {/* Satellite Beam */}
-                <polygon points="50,2 18,30 82,30" fill={`url(#laser-glow-${id})`} />
-                {/* Satellite */}
-                <g transform="translate(43, -2)">
-                  <circle cx="7" cy="5" r="3" fill="#94a3b8" />
-                  <line x1="1" y1="5" x2="13" y2="5" stroke="#cbd5e1" strokeWidth="1" />
-                  <rect x="0" y="3" width="2" height="4" fill="#60a5fa" />
-                  <rect x="12" y="3" width="2" height="4" fill="#60a5fa" />
-                </g>
-                {/* Isometric Block */}
-                {/* Dirt sides */}
-                <polygon points="15,30 50,45 50,56 15,41" fill="#4a3728" />
-                <polygon points="50,45 85,30 85,41 50,56" fill="#36251b" />
-                {/* Grass top */}
-                <polygon points="50,18 85,30 50,45 15,30" fill="#15803d" />
-                {/* Small trees */}
-                <g transform="translate(30, 20)">
-                  <polygon points="5,0 8,8 2,8" fill="#14532d" />
-                  <line x1="5" y1="8" x2="5" y2="11" stroke="#78350f" strokeWidth="1.5" />
-                </g>
-                <g transform="translate(48, 26)">
-                  <polygon points="5,0 8,8 2,8" fill="#166534" />
-                  <line x1="5" y1="8" x2="5" y2="11" stroke="#78350f" strokeWidth="1.5" />
-                </g>
-                <g transform="translate(62, 18)">
-                  <polygon points="5,0 8,8 2,8" fill="#14532d" />
-                  <line x1="5" y1="8" x2="5" y2="11" stroke="#78350f" strokeWidth="1.5" />
-                </g>
-              </svg>
-            </div>
-
-            <div className="journey-plot-meta-row">
-              <span>Area: <strong>{area}</strong></span>
-              <span className="text-[#10b981] font-bold text-[9px] tracking-wide">100% OK</span>
-            </div>
-          </div>
-        </div>
-      );
-    };
-
-    const renderProcessingCard = (id: string, x: number, y: number, index: number) => {
-      const det = viewModel.nodeDetailsById[id];
-      if (!det) return null;
-      const volumes = ["35.8%", "30.0%", "31.5%", "18.5%"];
-      const vol = volumes[index % volumes.length];
-      const isSelected = selectedNodeId === id;
-
-      return (
-        <div
-          key={`proc-${id}`}
-          className={`journey-proc-card ${isSelected ? "is-selected" : ""}`}
-          style={{
-            position: "absolute",
-            left: x - 100,
-            top: y - 50,
-            width: 200,
-            height: 100,
-            zIndex: 10
-          }}
-          onClick={() => setSelectedNodeId(id)}
-        >
-          <div className="journey-proc-header">
-            <span className="journey-proc-icon flex items-center justify-center text-amber-500">
-              <NodeGlyph actorType={det.node.actorType} />
-            </span>
-            <div className="journey-proc-identity min-w-0">
-              <strong className="truncate block">{det.node.entityName}</strong>
-              <span className="truncate block">{det.node.country}</span>
-            </div>
-          </div>
-
-          <div className="journey-proc-meta">
-            <div className="journey-proc-meta-item">
-              <span>Material</span>
-              <strong className="truncate block max-w-[85px]">{det.node.materialName || "Palm Product"}</strong>
-            </div>
-            <div className="journey-proc-meta-item">
-              <span>Volume %</span>
-              <strong>{vol}</strong>
-            </div>
-          </div>
-        </div>
-      );
-    };
-
-    const renderCentralNode = () => {
-      const det = viewModel.nodeDetailsById[directSupplierNodeId];
-      if (!det) return null;
-      const isSelected = selectedNodeId === directSupplierNodeId;
-      return (
-        <div
-          key={`central-${directSupplierNodeId}`}
-          className={`journey-central-node-wrap ${isSelected ? "is-selected" : ""}`}
-          style={{
-            position: "absolute",
-            left: centralNode.x - 85,
-            top: centralNode.y - 85,
-            width: 170,
-            height: 170,
-            zIndex: 12
-          }}
-          onClick={() => setSelectedNodeId(directSupplierNodeId)}
-        >
-          <div className="journey-central-node-shape" />
-          <div className="journey-central-node-content">
-            <span className="journey-central-icon flex items-center justify-center text-brand-primary w-12 h-12">
-              <NodeGlyph actorType={det.node.actorType} />
-            </span>
-            <strong className="journey-central-name truncate block max-w-[120px]">{det.node.entityName}</strong>
-            <span className="journey-central-label">DIRECT SUPPLIER</span>
-          </div>
-        </div>
-      );
-    };
-
-    const renderGatewayShield = () => (
-      <div
-        className="journey-shield-card"
-        style={{
-          position: "absolute",
-          left: gatewayShield.x - 90,
-          top: gatewayShield.y - 70,
-          width: 180,
-          height: 140,
-          zIndex: 10
-        }}
-      >
-        <div className="journey-shield-glow" />
-        <div className="journey-shield-icon">
-          <Shield className="h-10 w-10 text-[#60a5fa] fill-[#1e40af]/30" />
-          <div className="journey-shield-stars">
-            {[...Array(12)].map((_, i) => {
-              const angle = (i * 30 * Math.PI) / 180;
-              const rx = 13;
-              const ry = 13;
-              const cx = 16 + rx * Math.cos(angle);
-              const cy = 16 + ry * Math.sin(angle);
-              return (
-                <span
-                  key={i}
-                  className="journey-shield-star"
-                  style={{
-                    left: `${cx}px`,
-                    top: `${cy}px`
-                  }}
-                >
-                  ★
-                </span>
-              );
-            })}
-          </div>
-        </div>
-        <strong>EU TRACES</strong>
-        <span>Entry Point</span>
-
-        {/* Floating DDS document files */}
-        <div className="journey-floating-doc doc-1"><FileText className="h-3 w-3 mr-1 shrink-0" /> DDS</div>
-        <div className="journey-floating-doc doc-2"><FileText className="h-3 w-3 mr-1 shrink-0" /> DDS</div>
-        <div className="journey-floating-doc doc-3"><FileText className="h-3 w-3 mr-1 shrink-0" /> DDS</div>
-      </div>
-    );
-
-    const renderGatewayShip = () => (
-      <div
-        className="journey-ship-card"
-        style={{
-          position: "absolute",
-          left: gatewayShip.x - 100,
-          top: gatewayShip.y - 45,
-          width: 200,
-          height: 90,
-          zIndex: 10
-        }}
-      >
-        <div className="journey-ship-icon-wrap">
-          <Ship className="h-6 w-6 text-[#60a5fa]" />
-        </div>
-        <div className="journey-ship-details">
-          <strong>Consignment</strong>
-          <span>SHP-2026-EU-RDAM</span>
-        </div>
-      </div>
-    );
-
-    const renderGatewayRing = () => (
-      <div
-        className="journey-ring-card"
-        style={{
-          position: "absolute",
-          left: gatewayRing.x - 70,
-          top: gatewayRing.y - 70,
-          width: 140,
-          height: 140,
-          zIndex: 10
-        }}
-      >
-        <svg width="120" height="120" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(96, 165, 250, 0.1)" strokeWidth="6" />
-          <circle
-            cx="60"
-            cy="60"
-            r="48"
-            fill="none"
-            stroke="#60a5fa"
-            strokeWidth="6"
-            strokeDasharray="301.6"
-            strokeDashoffset={301.6 - (301.6 * selectedRoot.completionPercent) / 100}
-            strokeLinecap="round"
-            style={{ transform: "rotate(-90deg)", transformOrigin: "50% 50%", filter: "drop-shadow(0 0 8px rgba(96, 165, 250, 0.6))" }}
-          />
-        </svg>
-        <div className="journey-ring-content">
-          <strong>{selectedRoot.completionPercent}%</strong>
-          <span>TRACED</span>
-        </div>
-      </div>
-    );
-
-    const renderGatewayRibbon = () => (
-      <div
-        className="journey-ribbon-card"
-        style={{
-          position: "absolute",
-          left: gatewayRibbon.x - 80,
-          top: gatewayRibbon.y - 20,
-          width: 160,
-          height: 40,
-          zIndex: 10
-        }}
-      >
-        <div className="journey-ribbon-banner">
-          <Award className="h-4 w-4 mr-1.5 text-yellow-400 fill-yellow-400/20 shrink-0" />
-          <span>COMPLIANT</span>
-        </div>
-      </div>
-    );
-
-    // SVG paths
-    const xm = 400;
-    const ym = 310;
-
-    const paths: React.ReactNode[] = [];
-    const flowPaths: React.ReactNode[] = [];
-
-    // 1. Origin to Center Flow
-    originNodes.forEach((node) => {
-      const x1 = node.x + 130;
-      const y1 = node.y;
-      const d = `M ${x1} ${y1} C ${x1 + 100} ${y1}, ${xm - 80} ${ym}, ${xm} ${ym}`;
-      paths.push(<path key={`p-origin-${node.id}`} d={d} className="journey-svg-path path-green" />);
-      flowPaths.push(<path key={`f-origin-${node.id}`} d={d} className="journey-svg-path-flow path-green" />);
-    });
-
-    // Merged line
-    const dm = `M ${xm} ${ym} L ${centralNode.x - 110} ${ym}`;
-    paths.push(<path key="p-merged" d={dm} className="journey-svg-path path-green" />);
-    flowPaths.push(<path key="f-merged" d={dm} className="journey-svg-path-flow path-green" />);
-
-    // 2. Processing Nodes to Central Node
-    processingNodes.forEach((node) => {
-      const x1 = node.x;
-      const y1 = node.y;
-      const x2 = centralNode.x;
-      const y2 = centralNode.y;
-      const cp1x = x1 < x2 ? x1 + 100 : x1 - 100;
-      const cp2x = x1 < x2 ? x2 - 100 : x2 + 100;
-      const d = `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
-      paths.push(<path key={`p-proc-${node.id}`} d={d} className="journey-svg-path path-amber" />);
-      flowPaths.push(<path key={`f-proc-${node.id}`} d={d} className="journey-svg-path-flow path-amber" />);
-    });
-
-    // 3. Central Node to Gateway Shield
-    const dShield = `M ${centralNode.x + 110} ${centralNode.y} C ${centralNode.x + 220} ${centralNode.y}, ${gatewayShield.x - 220} ${gatewayShield.y}, ${gatewayShield.x - 90} ${gatewayShield.y}`;
-    paths.push(<path key="p-shield" d={dShield} className="journey-svg-path path-blue" />);
-    flowPaths.push(<path key="f-shield" d={dShield} className="journey-svg-path-flow path-blue" />);
-
-    // 4. Gateway Vertical Flow
-    const dShip = `M ${gatewayShield.x} ${gatewayShield.y + 70} L ${gatewayShip.x} ${gatewayShip.y - 45}`;
-    paths.push(<path key="p-ship" d={dShip} className="journey-svg-path path-blue" style={{ strokeDasharray: "none" }} />);
-    flowPaths.push(<path key="f-ship" d={dShip} className="journey-svg-path-flow path-blue" />);
-
-    const dRing = `M ${gatewayShip.x} ${gatewayShip.y + 45} L ${gatewayRing.x} ${gatewayRing.y - 70}`;
-    paths.push(<path key="p-ring" d={dRing} className="journey-svg-path path-blue" style={{ strokeDasharray: "none" }} />);
-    flowPaths.push(<path key="f-ring" d={dRing} className="journey-svg-path-flow path-blue" />);
-
-    const dRibbon = `M ${gatewayRing.x} ${gatewayRing.y + 70} L ${gatewayRibbon.x} ${gatewayRibbon.y - 20}`;
-    paths.push(<path key="p-ribbon" d={dRibbon} className="journey-svg-path path-blue" style={{ strokeDasharray: "none" }} />);
-    flowPaths.push(<path key="f-ribbon" d={dRibbon} className="journey-svg-path-flow path-blue" />);
-
-    return (
-      <div className="journey-canvas">
-        {/* Dynamic Topographic background paths */}
-        <svg className="journey-topographic-svg" width="100%" height="100%">
-          <path d="M -100 200 C 100 150, 300 450, 200 600" fill="none" stroke="rgba(96, 165, 250, 0.02)" strokeWidth="1.5" />
-          <path d="M -120 230 C 90 170, 280 480, 180 630" fill="none" stroke="rgba(96, 165, 250, 0.015)" strokeWidth="1" />
-          <path d="M 500 50 C 700 100, 800 -50, 1000 80" fill="none" stroke="rgba(245, 158, 11, 0.02)" strokeWidth="1.5" />
-          <path d="M 480 30 C 690 80, 780 -70, 980 60" fill="none" stroke="rgba(245, 158, 11, 0.015)" strokeWidth="1" />
-          <path d="M 1200 500 C 1300 550, 1500 450, 1600 600" fill="none" stroke="rgba(16, 185, 129, 0.02)" strokeWidth="1.5" />
-          <path d="M 1180 520 C 1280 570, 1480 470, 1580 620" fill="none" stroke="rgba(16, 185, 129, 0.015)" strokeWidth="1" />
-        </svg>
-
-        {/* Zone label headers */}
-        <div className="journey-canvas-zone-label l-zone">
-          <span className="label-text green-theme flex items-center gap-1.5 justify-center">
-            <Layers className="h-3.5 w-3.5 shrink-0" />
-            <span>LEFT ZONE - 'ORIGIN'</span>
-          </span>
-          <span className="sub-text">(green theme)</span>
-        </div>
-
-        <div className="journey-canvas-zone-label c-zone">
-          <span className="label-text amber-theme flex items-center gap-1.5 justify-center">
-            <Activity className="h-3.5 w-3.5 shrink-0" />
-            <span>CENTER ZONE - 'PROCESSING'</span>
-          </span>
-          <span className="sub-text">(amber theme)</span>
-        </div>
-
-        <div className="journey-canvas-zone-label r-zone">
-          <span className="label-text blue-theme flex items-center gap-1.5 justify-center">
-            <Shield className="h-3.5 w-3.5 shrink-0" />
-            <span>RIGHT ZONE - 'COMPLIANCE GATEWAY'</span>
-          </span>
-          <span className="sub-text">(blue theme)</span>
-        </div>
-
-        {/* SVG connection lines layer */}
-        <svg className="journey-connector-svg" width="100%" height="100%">
-          <defs>
-            <filter id="svg-amber-glow" x="-10%" y="-10%" width="120%" height="120%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-            <filter id="svg-green-glow" x="-10%" y="-10%" width="120%" height="120%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-            <filter id="svg-blue-glow" x="-10%" y="-10%" width="120%" height="120%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-          </defs>
-          <g opacity="0.65">
-            {paths}
-          </g>
-          <g>
-            {flowPaths}
-          </g>
-        </svg>
-
-        {/* Render node elements absolutely */}
-        {originNodes.map((n, index) => renderOriginPlot(n.id, n.x, n.y, index))}
-        {processingNodes.map((n, index) => renderProcessingCard(n.id, n.x, n.y, index))}
-        {renderCentralNode()}
-
-        {/* Render gateway elements */}
-        {renderGatewayShield()}
-        {renderGatewayShip()}
-        {renderGatewayRing()}
-        {renderGatewayRibbon()}
-
-        {/* Floating statistics panel (top right) */}
-        <div className="journey-glass-stats-panel">
-          <div className="stat-item"><span className="val text-brand-primary">{selectedRoot.totalActors}</span><span className="lbl">Actors Mapped</span></div>
-          <div className="stat-item"><span className="val text-emerald-500">{selectedRoot.farmerCount}</span><span className="lbl">Producers</span></div>
-          <div className="stat-item"><span className="val text-brand-primary">{selectedRoot.branchCount}</span><span className="lbl">Branches</span></div>
-          <div className="stat-item"><span className="val text-[#ef4444]">{selectedRoot.incompleteLeafCount}</span><span className="lbl">Open Gaps</span></div>
-        </div>
-
-        {/* Deforestation free pill bar footer */}
-        <div className="journey-footer-pill-bar">
-          <span>{selectedRoot.nodeIds.length} Nodes Mapped</span>
-          <span className="sep">•</span>
-          <span>{selectedRoot.farmerCount} Plots Identified</span>
-          <span className="sep">•</span>
-          <span>100% Deforestation Polygon Coverage</span>
-          <span className="sep">•</span>
-          <span className="text-[#10b981] font-extrabold font-mono">0 Deforestation Flags Detected</span>
-        </div>
-      </div>
-    );
-  };
-
-  const renderMergedTreeMap = () => (
-    <div className="traceability-map">
+  const renderMergedTreeMap = (mode: "inline" | "fullscreen" = "inline") => (
+    <div className={`traceability-map${mode === "fullscreen" ? " traceability-map--fullscreen" : ""}`}>
       <div className="traceability-map__header">
         <div>
           <p className="traceability-map__eyebrow">Supply Chain Map</p>
@@ -926,10 +852,13 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
           <span>{selectedRoot.productName} • {selectedRoot.directSupplierName}</span>
         </div>
         <div className="traceability-map__meta">
-          <span className="trace-chip trace-chip--outline">{visibleNodeCount} visible actors</span>
-          <span className="trace-chip trace-chip--outline">{visibleSplitCount} split point{visibleSplitCount === 1 ? "" : "s"}</span>
-          <button type="button" className="traceability-icon-button" onClick={() => setIsMapFullscreen(true)} aria-label="Open full screen supply chain map">
-            <FullscreenGlyph />
+          <button
+            type="button"
+            className="traceability-icon-button"
+            onClick={() => setIsMapFullscreen(mode !== "fullscreen")}
+            aria-label={mode === "fullscreen" ? "Close full screen supply chain map" : "Open full screen supply chain map"}
+          >
+            {mode === "fullscreen" ? <CloseGlyph /> : <FullscreenGlyph />}
           </button>
         </div>
       </div>
@@ -940,33 +869,32 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
         <span><em className="traceability-map__lane-dot traceability-map__lane-dot--producer" />Producers, estates, and farmers</span>
       </div>
 
-      <div className="traceability-tree">
-        {renderSVGTree()}
+      <div className={`traceability-tree${mode === "fullscreen" ? " traceability-tree--fullscreen" : ""}`}>
+        {renderSVGTree(mode)}
       </div>
     </div>
   );
 
   return (
     <div className="traceability-studio">
-      <div className="traceability-studio__rail fos-card">
+      <div className="traceability-studio__rail fos-card flex flex-col lg:sticky lg:top-6 lg:max-h-[calc(100vh-8rem)] lg:overflow-hidden">
         <div className="traceability-studio__section-title">
           <h2>Ingredient roots</h2>
           <span>{viewModel.roots.length} chains</span>
         </div>
-        <div className="traceability-studio__rail-list">
-          {viewModel.roots.map((root) => (
-            <RootSelectorCard key={root.rootId} root={root} isSelected={root.rootId === selectedRoot.rootId} onClick={() => onSelectRoot(root.rootId)} />
-          ))}
+        <div className="traceability-studio__rail-list min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-1 pr-2">
+          <div className="w-full space-y-2.5 min-w-0">
+            {viewModel.roots.map((root) => (
+              <RootSelectorCard key={root.rootId} root={root} isSelected={root.rootId === selectedRoot.rootId} onClick={() => onSelectRoot(root.rootId)} />
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="traceability-studio__content">
         <div className="fos-card traceability-overview p-6 rounded-xl border border-white/40 bg-gradient-to-br from-white/95 to-bg-page/95 shadow-md">
-          <div className="traceability-overview__hero flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-5 border-b border-border-soft/60">
+          <div className="traceability-overview__hero flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="traceability-overview__hero-copy space-y-1">
-              <span className="text-[10px] font-bold text-brand-primary uppercase tracking-[0.2em] block">
-                Ingredient Traceability Studio
-              </span>
               <h2 className="text-2xl font-black text-brand-primary flex items-center gap-2">
                 <span className="text-3xl select-none leading-none">{getCommodityIcon(selectedRoot.ingredientName)}</span>
                 {selectedRoot.ingredientName}
@@ -993,222 +921,21 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
               </span>
             </div>
           </div>
-
-          <div className="traceability-overview__stats grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 border-b border-border-soft/60">
-            <div className="p-3 bg-white/60 rounded-xl border border-border-soft/50 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-brand-primary/5 text-brand-primary flex items-center justify-center shrink-0">
-                <Users className="h-5 w-5" />
-              </div>
-              <div className="grid gap-0.5 leading-none">
-                <strong className="text-base font-extrabold text-brand-primary">{selectedRoot.totalActors}</strong>
-                <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">Total Actors</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-white/60 rounded-xl border border-border-soft/50 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-emerald-500/5 text-emerald-600 flex items-center justify-center shrink-0">
-                <Layers className="h-5 w-5" />
-              </div>
-              <div className="grid gap-0.5 leading-none">
-                <strong className="text-base font-extrabold text-brand-primary">{selectedRoot.branchCount}</strong>
-                <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">Terminal Producers</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-white/60 rounded-xl border border-border-soft/50 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-amber-500/5 text-amber-600 flex items-center justify-center shrink-0">
-                <ShieldAlert className="h-5 w-5" />
-              </div>
-              <div className="grid gap-0.5 leading-none">
-                <strong className="text-base font-extrabold text-brand-primary">{selectedRoot.incompleteLeafCount}</strong>
-                <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">Incomplete Leaves</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-white/60 rounded-xl border border-border-soft/50 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-violet-500/5 text-violet-600 flex items-center justify-center shrink-0">
-                <Activity className="h-5 w-5" />
-              </div>
-              <div className="grid gap-0.5 leading-none">
-                <strong className="text-sm font-extrabold text-brand-primary truncate max-w-[110px] block">
-                  {selectedRoot.latestActivityDate ? formatDate(selectedRoot.latestActivityDate) : "No activity"}
-                </strong>
-                <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">Latest Activity</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="traceability-legend flex flex-wrap justify-center gap-5 pt-4 text-xs font-semibold text-text-secondary leading-none">
-            <span className="flex items-center gap-1.5"><em className="traceability-legend__dot traceability-legend__dot--requested bg-violet-500 shadow-sm" />Request sent</span>
-            <span className="flex items-center gap-1.5"><em className="traceability-legend__dot traceability-legend__dot--review bg-amber-500 shadow-sm" />Response received</span>
-            <span className="flex items-center gap-1.5"><em className="traceability-legend__dot traceability-legend__dot--ready bg-emerald-500 shadow-sm" />Evidence attached</span>
-            <span className="flex items-center gap-1.5"><em className="traceability-legend__dot traceability-legend__dot--leaf bg-cyan-600 shadow-sm" />Geolocation valid</span>
-            <span className="flex items-center gap-1.5"><em className="traceability-legend__dot traceability-legend__dot--path bg-brand-primary shadow-sm" />Branch complete</span>
-          </div>
         </div>
 
-        <div className="traceability-mobile-tabs lg:hidden">
-          {(["summary", "lineage", "inspector"] as const).map((tab) => (
-            <button key={tab} type="button" className={mobileTab === tab ? "btn-primary" : "btn-secondary"} onClick={() => setMobileTab(tab)}>
-              {tab === "summary" ? "Summary" : tab === "lineage" ? "Map" : "Inspector"}
-            </button>
-          ))}
-        </div>
-
-        <div className={`traceability-studio__workspace traceability-studio__workspace--${mobileTab}`}>
+        <div className="traceability-studio__workspace">
           <div className="traceability-studio__canvas fos-card p-5 rounded-xl border border-border-soft bg-bg-surface shadow-sm">
             <div className="traceability-studio__section-title flex justify-between items-center pb-3 border-b border-border-soft/60">
               <h2 className="text-base font-extrabold text-brand-primary uppercase tracking-wider">Supply chain map</h2>
               <span className="text-[10px] font-bold text-brand-primary bg-brand-primary/5 border border-brand-primary/10 px-3 py-1 rounded-full">{visibleNodeCount} visible actors</span>
             </div>
 
-            <div className="traceability-filters grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl border border-border-soft/50 bg-bg-page/30 mt-4">
-              <label className="traceability-filter-field flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Status</span>
-                <select className="form-select text-xs font-semibold text-brand-primary rounded-lg border-border-soft p-2.5 bg-white" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-                  <option value="ALL">All statuses</option>
-                  {["NOT_REQUESTED", "REQUESTED", "IN_PROGRESS", "SUBMITTED", "GAPS_FOUND", "COMPLETE", "BLOCKED"].map((status) => (
-                    <option key={status} value={status}>{toSentenceCase(status)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="traceability-filter-field flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Actor</span>
-                <select className="form-select text-xs font-semibold text-brand-primary rounded-lg border-border-soft p-2.5 bg-white" value={actorFilter} onChange={(event) => setActorFilter(event.target.value as ActorFilter)}>
-                  <option value="ALL">All actor types</option>
-                  {["DIRECT_SUPPLIER", "INTERMEDIARY", "MILL", "TRADER", "PROCESSOR", "DISTRIBUTOR", "EXPORTER", "FARMER", "COOPERATIVE", "ESTATE"].map((actorType) => (
-                    <option key={actorType} value={actorType}>{toSentenceCase(actorType)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="traceability-filter-field flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Country</span>
-                <select className="form-select text-xs font-semibold text-brand-primary rounded-lg border-border-soft p-2.5 bg-white" value={countryFilter} onChange={(event) => setCountryFilter(event.target.value as CountryFilter)}>
-                  <option value="ALL">All countries</option>
-                  {countryOptions.map((country) => (
-                    <option key={country} value={country}>{country}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="traceability-filter-field flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Form</span>
-                <select className="form-select text-xs font-semibold text-brand-primary rounded-lg border-border-soft p-2.5 bg-white" value={formFilter} onChange={(event) => setFormFilter(event.target.value as FormFilter)}>
-                  <option value="ALL">All forms</option>
-                  <option value="INTERMEDIARY">Intermediary form</option>
-                  <option value="FARMER">Farmer form</option>
-                </select>
-              </label>
-              <label className="traceability-toggle col-span-2 md:col-span-4 flex items-center gap-2 pt-2 text-xs font-bold text-brand-primary cursor-pointer select-none">
-                <input type="checkbox" className="accent-brand-primary cursor-pointer h-4 w-4" checked={showIncompleteOnly} onChange={(event) => setShowIncompleteOnly(event.target.checked)} />
-                Only incomplete branches
-              </label>
-            </div>
-
-            <div className="mt-5">
-              {renderMergedTreeMap()}
+            <div className="mt-4">
+              {renderMergedTreeMap("inline")}
             </div>
           </div>
         </div>
 
-        {/* Slide-over floating inspector drawer backdrop */}
-        <div 
-          className={`traceability-inspector-drawer__backdrop ${isInspectorOpen && selectedNode ? "is-open" : ""}`}
-          onClick={() => setIsInspectorOpen(false)}
-        />
-
-        {/* Slide-over floating inspector drawer */}
-        <div className={`traceability-inspector-drawer ${isInspectorOpen && selectedNode ? "is-open" : ""}`}>
-          <div className="flex items-center justify-between border-b border-border-soft/60 pb-4">
-            <div>
-              <h2 className="text-sm font-extrabold text-brand-primary uppercase tracking-wider">Inspector</h2>
-              <span className="text-[10px] font-bold text-text-secondary">{selectedNode ? selectedNode.formPartyLabel : ""}</span>
-            </div>
-            <button 
-              type="button" 
-              className="h-8 w-8 rounded-full border border-border-soft flex items-center justify-center text-text-secondary hover:bg-bg-page transition-colors"
-              onClick={() => setIsInspectorOpen(false)}
-              aria-label="Close inspector panel"
-            >
-              <X className="h-4.5 w-4.5" />
-            </button>
-          </div>
-
-          {!selectedNode ? (
-            <p className="traceability-empty-state mt-4">Select a chain node to inspect which party filled which form and what evidence is still open.</p>
-          ) : (
-            <div className="traceability-inspector mt-2">
-              <div className="traceability-inspector__hero p-4 rounded-xl bg-gradient-to-b from-white to-bg-page border border-border-soft flex items-center gap-3">
-                <div className="traceability-node-card__glyph">
-                  <NodeGlyph actorType={selectedNode.node.actorType} />
-                </div>
-                <div>
-                  <strong className="text-xs font-bold text-brand-primary">{selectedNode.node.entityName}</strong>
-                  <span className="text-[10px] text-text-secondary block mt-0.5">{selectedNode.actorDisplayLabel} • {selectedNode.node.country}</span>
-                </div>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Who this actor is</h3>
-                <p>{selectedNode.node.entityName} sits at tier {selectedNode.node.tier} for {selectedRoot.ingredientName} and contributes {Math.round(selectedNode.node.volumeContributionPercent)}% of the visible branch volume.</p>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Which form they filled</h3>
-                <div className="traceability-inspector__grid">
-                  <div><span>Form family</span><strong>{selectedNode.formPartyLabel}</strong></div>
-                  <div><span>Form token</span><strong className="truncate max-w-[120px] inline-block">{selectedNode.request?.tokenLabel ?? "No request generated"}</strong></div>
-                  <div><span>Request status</span><strong>{selectedNode.request ? toSentenceCase(selectedNode.request.status) : "Not requested"}</strong></div>
-                  <div><span>Requested at</span><strong>{selectedNode.request ? formatDate(selectedNode.request.requestedAt) : "Not available"}</strong></div>
-                </div>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Evidence attached</h3>
-                <div className="traceability-inspector__grid">
-                  <div><span>Attached</span><strong>{selectedNode.evidenceSummary.attached}</strong></div>
-                  <div><span>Missing</span><strong>{selectedNode.evidenceSummary.missing}</strong></div>
-                  <div><span>Legal evidence</span><strong>{selectedNode.evidenceSummary.legalEvidenceCount}</strong></div>
-                  <div><span>Sustainability evidence</span><strong>{selectedNode.evidenceSummary.sustainabilityEvidenceCount}</strong></div>
-                </div>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Geolocation / plot readiness</h3>
-                <div className="traceability-inspector__grid">
-                  <div><span>Plot count</span><strong>{selectedNode.evidenceSummary.plotCount}</strong></div>
-                  <div><span>Geolocation state</span><strong>{selectedNode.evidenceSummary.geolocationReady === null ? "Not applicable" : selectedNode.evidenceSummary.geolocationReady ? "Valid" : "Blocked"}</strong></div>
-                  <div><span>Blocking geo issues</span><strong>{selectedNode.evidenceSummary.blockingGeoCount}</strong></div>
-                  <div><span>Missing geo rows</span><strong>{selectedNode.evidenceSummary.missingGeoCount}</strong></div>
-                </div>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Parent branch and downstream impact</h3>
-                <p>{selectedNode.downstreamImpact}</p>
-                <p className="text-xs font-mono text-brand-primary p-2.5 bg-bg-page rounded border border-border-soft mt-1 leading-5">
-                  {selectedNode.pathNodeIds.map((nodeId) => viewModel.nodeDetailsById[nodeId].node.entityName).join(" → ")}
-                </p>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Next action</h3>
-                <p>{selectedNode.nextAction}</p>
-              </div>
-
-              <div className="traceability-inspector__section">
-                <h3>Branch timeline</h3>
-                <div className="traceability-timeline">
-                  {selectedNode.timeline.map((event, index) => (
-                    <div key={`${event.label}-${index}`} className={`traceability-timeline__item traceability-timeline__item--${event.tone}`}>
-                      <span>{formatDate(event.date)}</span>
-                      <strong>{event.label}</strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
         <div className="fos-card traceability-open-gaps">
@@ -1239,27 +966,225 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
         </div>
 
       {isMapFullscreen && (
-        <div className="traceability-modal-backdrop traceability-modal-backdrop--journey" onClick={() => setIsMapFullscreen(false)}>
-          <div className="traceability-modal traceability-modal--journey" onClick={(event) => event.stopPropagation()}>
-            <div className="traceability-modal__header">
-              <div>
-                <p className="traceability-map__eyebrow" style={{ color: "#64748b" }}>Journey Map — Full Supply Chain View</p>
-                <h2>{selectedRoot.ingredientName}</h2>
-                <span>{selectedRoot.productName} • {selectedRoot.directSupplierName}</span>
-              </div>
-              <button type="button" className="traceability-icon-button" onClick={() => setIsMapFullscreen(false)} aria-label="Close full screen map">
-                <CloseGlyph />
-              </button>
-            </div>
-            <div className="traceability-modal__body" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
-              {renderJourneyMap()}
-            </div>
+        <div
+          className="traceability-modal-backdrop traceability-modal-backdrop--supply-chain"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsMapFullscreen(false);
+          }}
+        >
+          <div className="traceability-modal traceability-modal--supply-chain">
+            {renderMergedTreeMap("fullscreen")}
           </div>
         </div>
       )}
+
+      <ModalShell open={isDeclarationModalOpen} onClose={closeDeclarationWorkspace} size="xl">
+        <div className="flex h-[88vh] min-h-[720px] flex-col overflow-hidden rounded-[1.75rem] bg-bg-surface">
+          <div className="declaration-workspace-header">
+            <div className="declaration-workspace-header__top">
+              <div className="declaration-workspace-header__identity">
+                <p className="declaration-workspace-header__eyebrow">Declaration form</p>
+                <strong>{declarationActor?.node.entityName ?? "Actor workspace"}</strong>
+              </div>
+              <div className="declaration-workspace-header__actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!declarationActor}
+                  onClick={() => declarationActor && void handleCopyDeclarationLink(declarationActor)}
+                >
+                  <Copy className="h-4 w-4" aria-hidden="true" />
+                  Copy form link
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!declarationActor}
+                  onClick={() => declarationActor && handleSendDeclarationEmail(declarationActor)}
+                >
+                  <Send className="h-4 w-4" aria-hidden="true" />
+                  Send form
+                </button>
+                <button type="button" className="btn-secondary" onClick={closeDeclarationWorkspace}>
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="declaration-workspace-header__notice" aria-live="polite" aria-atomic="true">
+              {declarationNotice}
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden bg-bg-canvas-subtle">
+            {declarationModalToken ? (
+              <iframe
+                src={`/supplier?token=${encodeURIComponent(declarationModalToken)}&embed=1`}
+                title="Declaration form workspace"
+                className="h-full w-full border-0 bg-white"
+              />
+            ) : (
+              <div className="p-6 text-sm text-text-secondary">Loading declaration form...</div>
+            )}
+          </div>
+        </div>
+      </ModalShell>
+
+      <ModalShell open={isAddActorModalOpen} onClose={() => setIsAddActorModalOpen(false)} size="sm">
+        <ModalHeader
+          title={addActorMode === "SIBLING" ? "Add Sibling Supply Chain Actor" : "Add Upstream Supplier Node"}
+          description={
+            addActorMode === "SIBLING"
+              ? `Create another actor in the same tier (shares buyer: ${
+                  addActorTargetNode
+                    ? viewModel.nodeDetailsById[addActorTargetNode.parentNodeId || ""]?.node?.entityName || "EU Operator"
+                    : "EU Operator"
+                })`
+              : `Create a supplier that feeds directly into: ${addActorTargetNode?.entityName}`
+          }
+          onClose={() => setIsAddActorModalOpen(false)}
+        />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newActorName.trim()) return;
+
+            const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            const generatedNodeId = `node-${newActorType.toLowerCase()}-${suffix}`;
+
+            const parentId = addActorMode === "SIBLING"
+              ? (addActorTargetNode?.parentNodeId ?? null)
+              : (addActorTargetNode?.id ?? null);
+
+            const targetTier = addActorTargetNode?.tier ?? 1;
+            const nodeTier = addActorMode === "SIBLING" ? targetTier : targetTier + 1;
+
+            const newNode: SupplyChainNode = {
+              id: generatedNodeId,
+              ingredientId: selectedRoot.ingredientId,
+              productId: selectedRoot.productId,
+              supplierId: selectedRoot.supplierId,
+              parentNodeId: parentId,
+              tier: nodeTier,
+              actorType: newActorType,
+              entityName: newActorName.trim(),
+              country: newActorCountry,
+              commodity: selectedRoot.commodity,
+              materialName: newActorMaterial.trim() || selectedRoot.ingredientName,
+              volumeContributionPercent: Number(newActorVolume) || 100,
+              status: newActorStatus,
+            };
+
+            addSupplyChainNode(newNode);
+
+            if (parentId) {
+              addSupplyChainEdge({
+                id: `edge-${generatedNodeId}-${parentId}`,
+                fromNodeId: generatedNodeId,
+                toNodeId: parentId,
+                relationshipType: newActorType === "FARMER" || newActorType === "ESTATE" ? "FARM_SOURCE_FOR" : "SUPPLIES_TO",
+                materialName: newActorMaterial.trim() || selectedRoot.ingredientName,
+                volumePercent: Number(newActorVolume) || 100,
+                proofDocumentIds: [],
+                status: newActorStatus === "COMPLETE" ? "SUPPORTED" : "PENDING",
+              });
+            }
+
+            setIsAddActorModalOpen(false);
+          }}
+        >
+          <ModalBody className="space-y-4">
+            <FormField label="Entity Name" required>
+              <Input
+                type="text"
+                required
+                value={newActorName}
+                onChange={(e) => setNewActorName(e.target.value)}
+                placeholder="e.g. Borneo Milling Group"
+              />
+            </FormField>
+
+            <FormGrid columns={2}>
+              <FormField label="Actor Type / Role" required>
+                <Select
+                  value={newActorType}
+                  onChange={(e) => setNewActorType(e.target.value as any)}
+                >
+                  <option value="FARMER">Farmer</option>
+                  <option value="ESTATE">Estate</option>
+                  <option value="COOPERATIVE">Cooperative</option>
+                  <option value="MILL">Mill</option>
+                  <option value="PROCESSOR">Processor</option>
+                  <option value="TRADER">Trader</option>
+                  <option value="DISTRIBUTOR">Distributor</option>
+                  <option value="EXPORTER">Exporter</option>
+                  <option value="INTERMEDIARY">Intermediary</option>
+                </Select>
+              </FormField>
+
+              <FormField label="Country of Operation" required>
+                <Select
+                  value={newActorCountry}
+                  onChange={(e) => setNewActorCountry(e.target.value)}
+                >
+                  <option value="Indonesia">Indonesia</option>
+                  <option value="Malaysia">Malaysia</option>
+                  <option value="Cote d'Ivoire">Cote d'Ivoire</option>
+                  <option value="Ghana">Ghana</option>
+                  <option value="Colombia">Colombia</option>
+                  <option value="Brazil">Brazil</option>
+                  <option value="Pakistan">Pakistan</option>
+                  <option value="Ecuador">Ecuador</option>
+                  <option value="Peru">Peru</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+
+            <FormGrid columns={2}>
+              <FormField label="Material Sourced">
+                <Input
+                  type="text"
+                  value={newActorMaterial}
+                  onChange={(e) => setNewActorMaterial(e.target.value)}
+                  placeholder="e.g. Cocoa Beans"
+                />
+              </FormField>
+
+              <FormField label="Volume Contribution %" required>
+                <Input
+                  type="number"
+                  min="1"
+                  max="100"
+                  required
+                  value={newActorVolume}
+                  onChange={(e) => setNewActorVolume(Number(e.target.value))}
+                />
+              </FormField>
+            </FormGrid>
+
+            <FormField label="EUDR Compliance Status" required>
+              <Select
+                value={newActorStatus}
+                onChange={(e) => setNewActorStatus(e.target.value as any)}
+              >
+                <option value="COMPLETE">Complete (Accepted Proofs)</option>
+                <option value="SUBMITTED">Submitted (Pending Review)</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="REQUESTED">Requested</option>
+                <option value="GAPS_FOUND">Gaps Found</option>
+                <option value="BLOCKED">Blocked</option>
+                <option value="NOT_REQUESTED">Not Requested</option>
+              </Select>
+            </FormField>
+          </ModalBody>
+          <ModalFooter>
+            <FormActions submitLabel="Add Actor" onCancel={() => setIsAddActorModalOpen(false)} />
+          </ModalFooter>
+        </form>
+      </ModalShell>
+
     </div>
   );
 }
+
 
 export function SupplyChainSnapshot(props: SupplyChainSnapshotProps) {
   const { viewModel, supplierId } = props;
@@ -1277,20 +1202,13 @@ export function SupplyChainSnapshot(props: SupplyChainSnapshotProps) {
     <div className="traceability-snapshot">
       <div className="traceability-snapshot__hero">
         <div>
-          <h3>Supply chain snapshot</h3>
-          <p>Per-ingredient readiness, branch gaps, and the latest upstream declaration activity for this supplier.</p>
+          <p className="text-xs text-text-muted mt-1 leading-relaxed">
+            Per-ingredient readiness, branch gaps, and the latest upstream declaration activity for this supplier.
+          </p>
         </div>
       </div>
 
-      <div className="traceability-snapshot__chips">
-        {roots.map((root) => (
-          <span key={`${root.rootId}-chip`} className={`trace-chip trace-chip--${root.shipmentImpact === "READY" ? "ready" : root.shipmentImpact === "BLOCKED" ? "blocked" : "review"}`}>
-            {root.ingredientName}
-          </span>
-        ))}
-      </div>
-
-      <div className="traceability-snapshot__grid">
+      <div className="flex flex-col gap-2 mt-2">
         {roots.map((root) => {
           const latestRequest = root.nodeIds
             .map((nodeId) => viewModel.nodeDetailsById[nodeId].request)
@@ -1302,25 +1220,56 @@ export function SupplyChainSnapshot(props: SupplyChainSnapshotProps) {
             .filter((node) => node.status === "COMPLETE").length;
 
           return (
-            <div key={root.rootId} className="traceability-snapshot__item">
-              <div className="traceability-snapshot__item-top">
-                <div>
-                  <strong>{root.ingredientName}</strong>
-                  <span>{root.productName}</span>
+            <div
+              key={root.rootId}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-border-soft bg-bg-surface shadow-sm hover:shadow-card-hover transition-all duration-200"
+            >
+              {/* Left Side: Ingredient Details & Status Badge */}
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-sm font-bold text-brand-primary">{root.ingredientName}</strong>
+                  <span className="text-xs text-text-muted font-normal">({root.productName})</span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0 border ${
+                    root.shipmentImpact === "READY"
+                      ? "bg-state-success/10 text-state-success border-state-success/20"
+                      : root.shipmentImpact === "BLOCKED"
+                      ? "bg-state-error/10 text-state-error border-state-error/20"
+                      : "bg-state-warning/10 text-state-warning border-state-warning/20"
+                  }`}>
+                    {root.shipmentImpact === "READY" ? "Ready" : root.shipmentImpact === "BLOCKED" ? "Blocked" : "Review"}
+                  </span>
                 </div>
-                <span className={`trace-chip trace-chip--${root.shipmentImpact === "READY" ? "ready" : root.shipmentImpact === "BLOCKED" ? "blocked" : "review"}`}>
-                  {root.shipmentImpact === "AT_RISK" ? "At Risk" : toSentenceCase(root.shipmentImpact)}
-                </span>
+
+                {/* Middle Side: Micro stats */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-primary shrink-0"></span>
+                    {completedFarmers}/{root.leafNodeIds.length} producers complete
+                  </span>
+                  <span className="text-text-muted/40">|</span>
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${root.blockingNodeIds.length > 0 ? "bg-state-error" : "bg-state-success"}`}></span>
+                    {root.blockingNodeIds.length} branch gaps
+                  </span>
+                  {latestRequest && (
+                    <>
+                      <span className="text-text-muted/40">|</span>
+                      <span className="text-[11px] text-text-muted truncate">
+                        Latest: <span className="font-mono font-semibold text-text-primary">{latestRequest.tokenLabel}</span>
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div className="traceability-snapshot__stats">
-                <span>{completedFarmers}/{root.leafNodeIds.length} producers complete</span>
-                <span>{root.blockingNodeIds.length} open branch gaps</span>
-                <span>{latestRequest ? `Latest: ${latestRequest.tokenLabel}` : "No request activity"}</span>
-              </div>
-
-              <div className="traceability-snapshot__actions">
-                <Link href={buildTraceabilityLink(root) as any} className="btn-primary">Open Full Traceability Studio</Link>
+              {/* Right Side: Action Button */}
+              <div className="shrink-0 flex items-center justify-end">
+                <Link
+                  href={buildTraceabilityLink(root) as any}
+                  className="inline-flex items-center justify-center rounded bg-brand-accent hover:bg-brand-accent-hover text-brand-primary text-xs font-semibold py-1.5 px-3.5 transition-colors duration-150 shadow-sm"
+                >
+                  Open Studio
+                </Link>
               </div>
             </div>
           );
