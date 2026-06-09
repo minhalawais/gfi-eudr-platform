@@ -342,6 +342,60 @@ export interface IntegrationOverview {
   reconciliationWarnings: string[];
 }
 
+export interface ApiConnector {
+  id: string;
+  name: string;
+  provider: string;
+  type: "ERP" | "GEOLOCATION" | "TRACEABILITY" | "DEFORESTATION" | "CUSTOM";
+  version: string;
+  status: "ACTIVE" | "TESTING" | "PAUSED" | "ERROR";
+  healthScore: number;
+  lastSyncAt: string;
+  endpoint: string;
+  authentationType: "OAuth2" | "API_Key" | "Certificate" | "Basic";
+  dataFormat: "JSON" | "XML" | "CSV" | "EDI";
+  syncFrequency: "REAL_TIME" | "HOURLY" | "DAILY" | "MANUAL";
+  recordsProcessed: number;
+  errorCount: number;
+  capabilities: string[];
+  nextSyncAt?: string;
+}
+
+export interface ApiConfiguration {
+  apiId: string;
+  mappingRules: Record<string, string>;
+  transformations: string[];
+  retryPolicy: { maxRetries: number; backoffMs: number };
+  rateLimit: { requestsPerSecond: number };
+  webhookUrl?: string;
+  customHeaders?: Record<string, string>;
+  timeout: number;
+  isActive: boolean;
+  lastUpdatedAt: string;
+  updatedBy: string;
+}
+
+export interface ApiExecutionLog {
+  id: string;
+  apiId: string;
+  executionStartedAt: string;
+  executionEndedAt: string;
+  status: "PENDING" | "SUCCESS" | "PARTIAL_SUCCESS" | "FAILED" | "SKIPPED";
+  recordsReceived: number;
+  recordsProcessed: number;
+  recordsFailed: number;
+  errorLog?: string;
+  warnings?: string[];
+  dataSize: string;
+  performanceMetrics: {
+    avgLatencyMs: number;
+    throughputRecordsPerSec: number;
+  };
+  triggerType: "SCHEDULED" | "MANUAL" | "WEBHOOK" | "EVENT";
+  linkedConsignments?: string[];
+  linkedSuppliers?: string[];
+}
+
 export interface ReportRecord {
   id: string;
   title: string;
@@ -3911,6 +3965,243 @@ export const integrationOverview: IntegrationOverview = {
     "Indococoa source linkage via N A Enterprises was added manually after on-site discovery, not from ERP.",
   ],
 };
+
+export const apiConnectors: ApiConnector[] = [
+  {
+    id: "api-sap-s4hana",
+    name: "SAP S/4HANA Cloud",
+    provider: "SAP",
+    type: "ERP",
+    version: "2026.1",
+    status: "ACTIVE",
+    healthScore: 98,
+    lastSyncAt: "2026-06-09T10:30:00Z",
+    nextSyncAt: "2026-06-09T11:30:00Z",
+    endpoint: "https://api.sap.com/s4hana/dispatch-feed",
+    authentationType: "OAuth2",
+    dataFormat: "JSON",
+    syncFrequency: "HOURLY",
+    recordsProcessed: 156,
+    errorCount: 0,
+    capabilities: ["Dispatch Import", "Goods Receipt", "Material Mapping", "Batch Tracking"],
+  },
+  {
+    id: "api-oracle-netsuite",
+    name: "Oracle NetSuite",
+    provider: "Oracle",
+    type: "ERP",
+    version: "2025.2",
+    status: "ACTIVE",
+    healthScore: 95,
+    lastSyncAt: "2026-06-09T09:45:00Z",
+    nextSyncAt: "2026-06-09T10:45:00Z",
+    endpoint: "https://api.netsuite.com/services/rest/record/v1",
+    authentationType: "API_Key",
+    dataFormat: "JSON",
+    syncFrequency: "HOURLY",
+    recordsProcessed: 89,
+    errorCount: 0,
+    capabilities: ["Order Import", "Inventory Sync", "Supplier Data", "Invoice Mapping"],
+  },
+  {
+    id: "api-geolocation-mapbox",
+    name: "Mapbox Geolocation API",
+    provider: "Mapbox",
+    type: "GEOLOCATION",
+    version: "2026.1",
+    status: "ACTIVE",
+    healthScore: 87,
+    lastSyncAt: "2026-06-09T10:15:00Z",
+    nextSyncAt: "2026-06-09T10:20:00Z",
+    endpoint: "https://api.mapbox.com/geocoding/v5",
+    authentationType: "API_Key",
+    dataFormat: "JSON",
+    syncFrequency: "REAL_TIME",
+    recordsProcessed: 234,
+    errorCount: 3,
+    capabilities: ["Coordinate Validation", "Reverse Geocoding", "Distance Calculation", "Map Rendering"],
+  },
+  {
+    id: "api-deforestation-sentinel",
+    name: "Sentinel Deforestation Analysis",
+    provider: "ESA/Custom",
+    type: "DEFORESTATION",
+    version: "2026.0",
+    status: "TESTING",
+    healthScore: 72,
+    lastSyncAt: "2026-06-08T22:10:00Z",
+    nextSyncAt: "2026-06-09T22:10:00Z",
+    endpoint: "https://sentinel.esa.int/api/deforestation-check",
+    authentationType: "Certificate",
+    dataFormat: "JSON",
+    syncFrequency: "DAILY",
+    recordsProcessed: 12,
+    errorCount: 1,
+    capabilities: ["Forest Coverage Analysis", "Deforestation Detection", "Historical Timeline", "Risk Scoring"],
+  },
+  {
+    id: "api-traceability-platform",
+    name: "Internal Traceability Platform",
+    provider: "Custom",
+    type: "TRACEABILITY",
+    version: "1.2.3",
+    status: "ACTIVE",
+    healthScore: 100,
+    lastSyncAt: "2026-06-09T10:25:00Z",
+    nextSyncAt: "2026-06-09T10:30:00Z",
+    endpoint: "https://api.gfi-eudr.internal/traceability",
+    authentationType: "Basic",
+    dataFormat: "JSON",
+    syncFrequency: "REAL_TIME",
+    recordsProcessed: 445,
+    errorCount: 0,
+    capabilities: ["Chain of Custody Link", "Supplier Resolution", "Product Mapping", "Event Logging"],
+  },
+];
+
+export const apiExecutionLogs: ApiExecutionLog[] = [
+  {
+    id: "log-sap-20260609-1030",
+    apiId: "api-sap-s4hana",
+    executionStartedAt: "2026-06-09T10:30:00Z",
+    executionEndedAt: "2026-06-09T10:32:15Z",
+    status: "SUCCESS",
+    recordsReceived: 42,
+    recordsProcessed: 42,
+    recordsFailed: 0,
+    dataSize: "2.4 MB",
+    performanceMetrics: {
+      avgLatencyMs: 145,
+      throughputRecordsPerSec: 22,
+    },
+    triggerType: "SCHEDULED",
+    linkedConsignments: ["con-bubblegum-001", "con-chew-002"],
+  },
+  {
+    id: "log-sap-20260609-0930",
+    apiId: "api-sap-s4hana",
+    executionStartedAt: "2026-06-09T09:30:00Z",
+    executionEndedAt: "2026-06-09T09:32:45Z",
+    status: "SUCCESS",
+    recordsReceived: 38,
+    recordsProcessed: 38,
+    recordsFailed: 0,
+    dataSize: "2.1 MB",
+    performanceMetrics: {
+      avgLatencyMs: 138,
+      throughputRecordsPerSec: 21,
+    },
+    triggerType: "SCHEDULED",
+    linkedConsignments: ["con-gum-004", "con-candy-005"],
+  },
+  {
+    id: "log-oracle-20260609-0945",
+    apiId: "api-oracle-netsuite",
+    executionStartedAt: "2026-06-09T09:45:00Z",
+    executionEndedAt: "2026-06-09T09:47:20Z",
+    status: "SUCCESS",
+    recordsReceived: 25,
+    recordsProcessed: 25,
+    recordsFailed: 0,
+    dataSize: "1.8 MB",
+    performanceMetrics: {
+      avgLatencyMs: 112,
+      throughputRecordsPerSec: 19,
+    },
+    triggerType: "SCHEDULED",
+    linkedSuppliers: ["sup-cargill", "sup-jb-cocoa"],
+  },
+  {
+    id: "log-mapbox-20260609-1015",
+    apiId: "api-geolocation-mapbox",
+    executionStartedAt: "2026-06-09T10:15:00Z",
+    executionEndedAt: "2026-06-09T10:16:30Z",
+    status: "PARTIAL_SUCCESS",
+    recordsReceived: 48,
+    recordsProcessed: 45,
+    recordsFailed: 3,
+    errorLog: "3 coordinates outside expected boundary zones; auto-flagged for review",
+    warnings: ["GRN-CARG-1021 returned null for reverse geocode", "Plot jb-02 coordinate precision issue"],
+    dataSize: "1.2 MB",
+    performanceMetrics: {
+      avgLatencyMs: 234,
+      throughputRecordsPerSec: 15,
+    },
+    triggerType: "SCHEDULED",
+  },
+  {
+    id: "log-sentinel-20260608-2210",
+    apiId: "api-deforestation-sentinel",
+    executionStartedAt: "2026-06-08T22:10:00Z",
+    executionEndedAt: "2026-06-08T22:18:45Z",
+    status: "PARTIAL_SUCCESS",
+    recordsReceived: 4,
+    recordsProcessed: 3,
+    recordsFailed: 1,
+    errorLog: "Plot plot-cargill-01 analysis timed out; satellite data not yet available for June",
+    warnings: ["May need to retry in 12 hours for latest imagery"],
+    dataSize: "8.7 MB",
+    performanceMetrics: {
+      avgLatencyMs: 512,
+      throughputRecordsPerSec: 1.8,
+    },
+    triggerType: "SCHEDULED",
+  },
+  {
+    id: "log-mapbox-20260609-1010",
+    apiId: "api-geolocation-mapbox",
+    executionStartedAt: "2026-06-09T10:10:00Z",
+    executionEndedAt: "2026-06-09T10:11:15Z",
+    status: "SUCCESS",
+    recordsReceived: 32,
+    recordsProcessed: 32,
+    recordsFailed: 0,
+    dataSize: "980 KB",
+    performanceMetrics: {
+      avgLatencyMs: 198,
+      throughputRecordsPerSec: 18,
+    },
+    triggerType: "MANUAL",
+  },
+];
+
+export const apiConfigurations: ApiConfiguration[] = [
+  {
+    apiId: "api-sap-s4hana",
+    mappingRules: {
+      "dispatchId": "ref_number",
+      "createdDate": "dispatch_date",
+      "weight": "gross_weight_tons",
+      "container": "container_no",
+      "destination": "country",
+      "items": "dispatch_lines",
+    },
+    transformations: ["parseDispatches()", "enrichHSCodes()", "mapToConsignments()"],
+    retryPolicy: { maxRetries: 3, backoffMs: 5000 },
+    rateLimit: { requestsPerSecond: 10 },
+    timeout: 30000,
+    isActive: true,
+    lastUpdatedAt: "2026-05-15T14:22:00Z",
+    updatedBy: "compliance-admin",
+  },
+  {
+    apiId: "api-geolocation-mapbox",
+    mappingRules: {
+      "latitude": "lat",
+      "longitude": "lng",
+      "plotId": "id",
+      "areaHa": "area_hectares",
+    },
+    transformations: ["validateCoordinates()", "reverseGeocode()", "calculateDistance()"],
+    retryPolicy: { maxRetries: 2, backoffMs: 3000 },
+    rateLimit: { requestsPerSecond: 100 },
+    webhookUrl: "https://api.gfi-eudr.internal/webhooks/geolocation",
+    timeout: 15000,
+    isActive: true,
+    lastUpdatedAt: "2026-05-20T09:45:00Z",
+    updatedBy: "integration-team",
+  },
+];
 
 export const reports: ReportRecord[] = [
   {
