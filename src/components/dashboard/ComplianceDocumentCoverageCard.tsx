@@ -108,7 +108,7 @@ export function ComplianceDocumentCoverageCard({ summary }: { summary: Dashboard
 
 
 
-      <div className="h-[150px] overflow-y-auto overflow-x-hidden pr-1 internal-scroll internal-scroll--main">
+      <div className="h-[205px] overflow-y-auto overflow-x-hidden pr-1 internal-scroll internal-scroll--main">
         <div className="space-y-1.5">
           {(() => {
             const maxCount = Math.max(...summary.categories.map((c) => c.count), 1);
@@ -140,13 +140,6 @@ export function ComplianceDocumentCoverageCard({ summary }: { summary: Dashboard
             });
           })()}
         </div>
-      </div>
-
-      <div className="border-t border-border-soft/60 pt-2">
-        <p className="flex items-center justify-center gap-1.5 text-center text-[9px] font-semibold italic leading-relaxed text-text-secondary">
-          <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
-          Evidence register and supplier uploads. Expiring soon means within 60 days.
-        </p>
       </div>
     </Card>
   );

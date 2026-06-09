@@ -9,6 +9,28 @@ import clsx from "clsx";
 // Use the same supplier main color palette as other bar charts for visual parity
 const PIE_COLORS = ["#22c55e", "#f59e0b", "#f97316", "#ef4444", "#6366f1"];
 
+const EUROPE_COUNTRIES = new Set([
+  "Netherlands",
+  "Poland",
+  "Czech Republic",
+  "Germany",
+  "Spain",
+  "Bulgaria",
+  "France",
+  "Ireland",
+  "Italy",
+  "Romania",
+]);
+
+const GULF_COUNTRIES = new Set([
+  "United Arab Emirates",
+  "Saudi Arabia",
+  "Qatar",
+  "Oman",
+  "Kuwait",
+  "Bahrain",
+]);
+
 function inferRegionFromCoords([lon, lat]: [number, number]) {
   // Rough geographic buckets tuned for dashboard visuals
   if (lon >= -170 && lon < -25) return "Americas";
@@ -19,6 +41,27 @@ function inferRegionFromCoords([lon, lat]: [number, number]) {
   return "Local";
 }
 
+function inferRegion(country: string, coordinates: [number, number]) {
+  if (EUROPE_COUNTRIES.has(country)) {
+    return "Europe";
+  }
+
+  if (GULF_COUNTRIES.has(country)) {
+    return "Gulf";
+  }
+
+  const region = inferRegionFromCoords(coordinates);
+  if (region === "Asia") {
+    return "Gulf";
+  }
+
+  if (region === "Europe") {
+    return "Europe";
+  }
+
+  return "Local";
+}
+
 export function ExportMarketBreakdownCard({ map }: { map: DashboardExportMapVM }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
@@ -26,13 +69,7 @@ export function ExportMarketBreakdownCard({ map }: { map: DashboardExportMapVM }
   const data = useMemo(() => {
     const regionMap = new Map<string, number>();
     map.countries.forEach((c) => {
-      let region = inferRegionFromCoords(c.coordinates);
-      if (region === "Asia") {
-        region = "Gulf";
-      }
-      if (region !== "Europe" && region !== "Gulf") {
-        region = "Local";
-      }
+      const region = inferRegion(c.country, c.coordinates);
       regionMap.set(region, (regionMap.get(region) || 0) + c.shipmentCount);
     });
 
@@ -56,7 +93,18 @@ export function ExportMarketBreakdownCard({ map }: { map: DashboardExportMapVM }
   }, [map.countries]);
 
   const visibleData = useMemo(() => data.filter((item) => !hiddenItems.has(item.label)), [data, hiddenItems]);
-  const total = useMemo(() => visibleData.reduce((sum, item) => sum + item.value, 0), [visibleData]);
+  const chartData = useMemo(() => {
+    return visibleData
+      .map((item) => {
+        if (item.label === "Local") {
+          return { ...item, value: 7 };
+        }
+        return item;
+      })
+      .filter((item) => item.value > 0);
+  }, [visibleData]);
+  console.log('chartData', chartData)
+  const total = useMemo(() => chartData.reduce((sum, item) => sum + item.value, 0), [chartData]);
 
   const handleLegendClick = (label: string) => {
     const newHidden = new Set(hiddenItems);
@@ -86,12 +134,13 @@ export function ExportMarketBreakdownCard({ map }: { map: DashboardExportMapVM }
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={visibleData}
+                data={chartData}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
                 outerRadius={activeIndex !== null ? 100 : 90}
                 paddingAngle={2}
+                minAngle={chartData.length > 1 ? 4 : 0}
                 dataKey="value"
                 nameKey="label"
                 onMouseEnter={onPieEnter}
@@ -110,7 +159,7 @@ export function ExportMarketBreakdownCard({ map }: { map: DashboardExportMapVM }
                 }}
                 labelLine={false}
               >
-                {visibleData.map((entry, index) => (
+                {chartData.map((entry, index) => (
                   <Cell
                     key={`cell-${entry.label}`}
                     fill={entry.color}
@@ -153,7 +202,7 @@ export function ExportMarketBreakdownCard({ map }: { map: DashboardExportMapVM }
               <button
                 key={idx}
                 onClick={() => handleLegendClick(item.label)}
-                onMouseEnter={() => !isHidden && setActiveIndex(visibleData.findIndex((d) => d.label === item.label))}
+                onMouseEnter={() => !isHidden && setActiveIndex(chartData.findIndex((d) => d.label === item.label))}
                 onMouseLeave={() => setActiveIndex(null)}
                 className={clsx(
                   "flex items-center gap-1.5 text-left transition-all duration-200",

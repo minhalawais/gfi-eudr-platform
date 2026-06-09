@@ -261,9 +261,9 @@ function SupplierOriginCountriesBreakdown({
   };
 
   return (
-    <div className="w-full flex flex-col mt-2">
+    <div className="mt-2 flex w-full flex-col gap-1">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-bg-surface-alt border border-border-soft/60 flex items-center justify-center text-brand-primary transition-colors">
             <MapPin size={20} />
@@ -276,7 +276,7 @@ function SupplierOriginCountriesBreakdown({
       </div>
 
       {/* Stacked Bar Chart */}
-      <div className="h-14 mb-3">
+      <div className="mb-4 h-16">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={stackedData}
@@ -351,7 +351,7 @@ function SupplierOriginCountriesBreakdown({
       </div>
 
       {/* Legend - Center Aligned & Clickable */}
-      <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 pt-1">
         {data.map((item, idx) => {
           const isHidden = hiddenItems.has(item.name);
           return (
@@ -516,18 +516,18 @@ function ProductBomVulnerabilityCard({
 }: {
   data: Array<{
     productName: string;
-    hsCode: string;
-    statuses: { COCOA: string; PALM: string; SOYA: string; COFFEE: string };
+    ingredientCount: number;
+    eudrStatus: string;
   }>;
 }) {
   return (
     <Card className="flex flex-col gap-4 p-5 h-full overflow-hidden border border-border-soft bg-bg-surface shadow-glow">
       <div>
         <h3 className="text-base font-bold text-brand-primary leading-snug">
-          Product BOM Export Vulnerability Matrix
+          Product Wise Ingredient Count
         </h3>
         <p className="text-[11px] text-text-secondary mt-0.5 font-medium">
-          Ingredient-level EUDR compliance exposure across active export products
+          Product-level ingredient volume and EUDR readiness across active export products
         </p>
       </div>
 
@@ -538,11 +538,8 @@ function ProductBomVulnerabilityCard({
           <thead>
             <tr className="border-b border-border-soft text-[10px] uppercase font-bold text-text-secondary">
               <th className="py-2.5 font-semibold">Product Name</th>
-              <th className="py-2.5 font-semibold">HS Code</th>
-              <th className="py-2.5 text-center font-semibold">Cocoa</th>
-              <th className="py-2.5 text-center font-semibold">Palm</th>
-              <th className="py-2.5 text-center font-semibold">Soya</th>
-              <th className="py-2.5 text-center font-semibold">Coffee</th>
+              <th className="py-2.5 text-center font-semibold">Ingredient Count</th>
+              <th className="py-2.5 text-center font-semibold">EUDR Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-soft/50">
@@ -551,44 +548,31 @@ function ProductBomVulnerabilityCard({
                 <td className="py-2.5 font-bold text-brand-primary truncate max-w-[150px]">
                   {p.productName}
                 </td>
-                <td className="py-2.5 text-text-secondary font-medium font-mono text-[10px]">
-                  {p.hsCode}
+                <td className="py-2.5 text-center text-brand-primary font-black">
+                  {p.ingredientCount}
                 </td>
-                {(["COCOA", "PALM", "SOYA", "COFFEE"] as const).map((comm) => {
-                  const status = p.statuses[comm];
-                  return (
-                    <td key={comm} className="py-2.5 text-center">
-                      <div className="inline-flex items-center justify-center">
-                        <span
-                          className={clsx(
-                            "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm transition-transform duration-200 hover:scale-110",
-                            status === "GREEN" && "bg-state-success/15 text-state-success border border-state-success/30",
-                            status === "AMBER" && "bg-state-warning/15 text-state-warning border border-state-warning/30",
-                            status === "RED" && "bg-state-error/15 text-state-error border border-state-error/30",
-                            status === "N/A" && "bg-bg-surface-alt text-text-muted border border-border-soft/70"
-                          )}
-                          title={`${comm}: ${status}`}
-                        >
-                          {status === "GREEN" && "✓"}
-                          {status === "AMBER" && "!"}
-                          {status === "RED" && "✕"}
-                          {status === "N/A" && "-"}
-                        </span>
-                      </div>
-                    </td>
-                  );
-                })}
+                <td className="py-2.5 text-center">
+                  <span
+                    className={clsx(
+                      "inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wide",
+                      p.eudrStatus === "IN Scope" && "bg-state-success/15 text-state-success border border-state-success/30",
+                      p.eudrStatus === "Out of Scope" && "bg-bg-surface-alt text-text-muted border border-border-soft/70",
+                      p.eudrStatus === "Under Review" && "bg-state-warning/15 text-state-warning border border-state-warning/30"
+                    )}
+                  >
+                    {p.eudrStatus}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="border-t border-border-soft/60 pt-2.5 mt-auto flex items-center justify-center gap-4 text-[9px] font-bold text-text-secondary uppercase tracking-wider">
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-state-success/15 border border-state-success/30 flex items-center justify-center text-state-success text-[7px] font-black">✓</span> Compliant</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-state-warning/15 border border-state-warning/30 flex items-center justify-center text-state-warning text-[7px] font-black">!</span> Review Required</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-state-error/15 border border-state-error/30 flex items-center justify-center text-state-error text-[7px] font-black">✕</span> Blocked</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-bg-surface-alt border border-border-soft/70 flex items-center justify-center text-text-muted text-[7px] font-black">-</span> Out of Scope</span>
+      <div className="mt-auto flex items-center justify-center gap-4 border-t border-border-soft/60 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-text-secondary">
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-state-success/30 bg-state-success/15" /> IN Scope</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-border-soft/70 bg-bg-surface-alt" /> Out of Scope</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-state-warning/30 bg-state-warning/15" /> Under Review</span>
       </div>
     </Card>
   );
@@ -1058,32 +1042,24 @@ export default function IntelligenceDashboardPage() {
   const bomVulnerabilityData = useMemo(() => {
     const products = sessionProducts ?? [];
     const mapped = products.map((p) => {
-      const getStatusForCommodity = (comm: "COCOA" | "PALM" | "SOYA" | "COFFEE") => {
-        const ingredient = p.ingredients?.find((i) => i.commodity === comm);
-        if (!ingredient) return "N/A";
-        if (ingredient.readiness === "READY" && ingredient.supplyChainStatus === "COMPLETE") return "GREEN";
-        if (ingredient.readiness === "BLOCKED" || ingredient.supplyChainStatus === "BLOCKED") return "RED";
-        return "AMBER";
-      };
-
       return {
         productName: p.name,
-        hsCode: p.finishedHsCode || "1806.31.00",
-        statuses: {
-          COCOA: getStatusForCommodity("COCOA"),
-          PALM: getStatusForCommodity("PALM"),
-          SOYA: getStatusForCommodity("SOYA"),
-          COFFEE: getStatusForCommodity("COFFEE"),
-        },
+        ingredientCount: p.ingredients?.length ?? 0,
+        eudrStatus:
+          p.scopeStatus === "IN_SCOPE"
+            ? "IN Scope"
+            : p.scopeStatus === "OUT_OF_SCOPE"
+              ? "Out of Scope"
+              : "Under Review",
       };
     });
 
     const defaults = [
-      { productName: "Choc Wafer 200g", hsCode: "1905.32.11", statuses: { COCOA: "GREEN", PALM: "AMBER", SOYA: "GREEN", COFFEE: "N/A" } },
-      { productName: "Palm Olein Bulk", hsCode: "1511.90.90", statuses: { COCOA: "N/A", PALM: "GREEN", SOYA: "N/A", COFFEE: "N/A" } },
-      { productName: "Soy Lecithin E322", hsCode: "2923.20.00", statuses: { COCOA: "N/A", PALM: "N/A", SOYA: "AMBER", COFFEE: "N/A" } },
-      { productName: "Dark Chocolate Bar", hsCode: "1806.32.10", statuses: { COCOA: "GREEN", PALM: "N/A", SOYA: "GREEN", COFFEE: "N/A" } },
-      { productName: "Coffee Extract Blend", hsCode: "2101.11.00", statuses: { COCOA: "N/A", PALM: "N/A", SOYA: "N/A", COFFEE: "RED" } },
+      { productName: "Choc Wafer 200g", ingredientCount: 9, eudrStatus: "Under Review" },
+      { productName: "Palm Olein Bulk", ingredientCount: 4, eudrStatus: "Out of Scope" },
+      { productName: "Soy Lecithin E322", ingredientCount: 3, eudrStatus: "Under Review" },
+      { productName: "Dark Chocolate Bar", ingredientCount: 7, eudrStatus: "IN Scope" },
+      { productName: "Coffee Extract Blend", ingredientCount: 5, eudrStatus: "IN Scope" },
     ];
 
     return mapped.length >= 3 ? mapped : [...mapped, ...defaults.slice(mapped.length)];
@@ -1332,7 +1308,7 @@ export default function IntelligenceDashboardPage() {
             </div>
           </Card>
 
-          <Card className="flex flex-col gap-2 overflow-hidden border border-border-soft bg-bg-surface p-4 shadow-glow">
+          <Card className="flex min-h-[188px] flex-col gap-2 overflow-hidden border border-border-soft bg-bg-surface p-5 shadow-glow">
             <SupplierOriginCountriesBreakdown data={supplierOriginCountriesData} />
           </Card>
         </div>

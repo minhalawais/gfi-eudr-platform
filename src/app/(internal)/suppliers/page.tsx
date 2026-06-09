@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { Pencil, Plus, Send, Copy, AlertTriangle, CheckCircle2, Link2, Upload, Trash2, Eye, X, FileText, ShieldCheck, Download, Printer } from "lucide-react";
 import { getProductName, type SupplierDocument } from "@/lib/gfi-dummy-data";
 import { useSession } from "@/components/ui/PermissionGuard";
+import { cn } from "@/lib/cn";
 import {
   Button,
   Card,
@@ -47,6 +48,182 @@ function toRiskTone(value: string): RiskTone {
   }
   return "medium";
 }
+
+const ALL_COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
+  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
+  "Cote d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic",
+  "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland",
+  "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea",
+  "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq",
+  "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait",
+  "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+  "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico",
+  "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru",
+  "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman",
+  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+  "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe",
+  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
+  "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria",
+  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
+  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States of America", "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela",
+  "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+];
+
+interface SearchableCountryDropdownProps {
+  value: string;
+  onChange: (val: string) => void;
+  required?: boolean;
+}
+
+function SearchableCountryDropdown({ value, onChange, required }: SearchableCountryDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearch(value);
+    }
+  }, [value, isOpen]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredCountries = useMemo(() => {
+    const query = search.toLowerCase().trim();
+    if (!query) return ALL_COUNTRIES;
+    return ALL_COUNTRIES.filter((c) => c.toLowerCase().includes(query));
+  }, [search]);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative">
+        <Input
+          required={required}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={(e) => {
+            setIsOpen(true);
+            e.target.select();
+          }}
+          placeholder="Search country..."
+          className="pr-10"
+        />
+        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+          <svg
+            className="h-4 w-4 text-text-muted transition-transform duration-200"
+            style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </div>
+      </div>
+
+      {isOpen && (
+        <ul className="absolute z-[1100] mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-border-soft bg-bg-surface p-1 shadow-lg focus:outline-none">
+          {filteredCountries.length > 0 ? (
+            filteredCountries.map((country) => (
+              <li
+                key={country}
+                onClick={() => {
+                  onChange(country);
+                  setSearch(country);
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "cursor-pointer select-none rounded px-3 py-2 text-sm text-text-primary transition-colors hover:bg-brand-accent-soft/20 hover:text-brand-primary",
+                  value === country && "bg-brand-accent-soft/40 text-brand-primary font-semibold"
+                )}
+              >
+                {country}
+              </li>
+            ))
+          ) : (
+            <li className="select-none px-3 py-2 text-sm text-text-muted">No countries found</li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const EVAL_SECTIONS = [
+  {
+    title: "General Requirements",
+    items: [
+      { id: "licenses_current", label: "State and Local Operating Licenses current? Attach required copy." }
+    ]
+  },
+  {
+    title: "Food Safety Programs",
+    items: [
+      { id: "pest_control", label: "Pest Control In Place?" },
+      { id: "pest_control_contractor", label: "Pest Control Contractor Name:", type: "text" },
+      { id: "inspection_records", label: "Inspection Records - Please Attach Last Three" },
+      { id: "inspecting_agency", label: "Names of Inspecting Agency:", type: "text" },
+      { id: "water_tested", label: "Water Tested Annually - Please Attach Results" },
+      { id: "cleaning_schedule", label: "Master Cleaning Schedule used?" },
+      { id: "food_safety_training", label: "Provide employees with Food Safety Training?" },
+      { id: "environmental_testing", label: "Environmental testing performed of premises?" },
+      { id: "corrective_actions", label: "Corrective actions procedures identified?" },
+      { id: "mock_recalls", label: "Mock Recalls conducted? Plz attache" }
+    ]
+  },
+  {
+    title: "Building and Facilities",
+    items: [
+      { id: "interior_exterior_clean", label: "Exterior/Interior clean and free of debris?" },
+      { id: "glass_policy", label: "Glass policy in place?" },
+      { id: "equipment_maintained", label: "Equipment maintained?" },
+      { id: "pm_program", label: "PM program in place and documented." },
+      { id: "storage_clean", label: "Storage areas clean and well maintained?" },
+      { id: "no_standing_water", label: "No standing water?" },
+      { id: "sewage_maintained", label: "Sewage maintained properly?" }
+    ]
+  },
+  {
+    title: "Receiving and Storage",
+    items: [
+      { id: "vehicle_inspections", label: "Records are maintained for incoming/outgoing vehicle inspections?" },
+      { id: "lot_numbers", label: "Lot numbers utilized?" },
+      { id: "chemicals_stored", label: "Chemicals stored properly?" }
+    ]
+  },
+  {
+    title: "Food Security",
+    items: [
+      { id: "food_security_training", label: "Training provided to employees for food security? Attach Annual training plan" },
+      { id: "access_limited", label: "Access limited into your processing area?" }
+    ]
+  },
+  {
+    title: "Glass Policy and Allergen Management",
+    items: [
+      { id: "traceability_forward_backward", label: "Traceability forward and backward" }
+    ]
+  }
+];
 
 export default function SuppliersPage() {
   const {
@@ -101,6 +278,18 @@ export default function SuppliersPage() {
   // Supplier Document View state
   const [viewingDoc, setViewingDoc] = useState<SupplierDocument | null>(null);
 
+  // Supplier Evaluation states
+  const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
+  const [evalFormData, setEvalFormData] = useState<any>({
+    supplierName: "",
+    contactPerson: "",
+    address: "",
+    email: "",
+    fax: "",
+    productsSupplied: "",
+    checklist: {}
+  });
+
   const activeSupplierId = selectedSupplierId || currentSuppliers[0]?.id || "";
   const selectedSupplier = currentSuppliers.find((supplier) => supplier.id === activeSupplierId) ?? currentSuppliers[0];
   const selectedSupplierNodes = selectedSupplier
@@ -108,9 +297,9 @@ export default function SuppliersPage() {
     : [];
   const selectedSupplierRequests = selectedSupplier
     ? eudrFormRequests.filter(
-        (request) =>
-          selectedSupplierNodes.some((node) => node.id === request.targetNodeId) || request.targetSupplierId === selectedSupplier.id,
-      )
+      (request) =>
+        selectedSupplierNodes.some((node) => node.id === request.targetNodeId) || request.targetSupplierId === selectedSupplier.id,
+    )
     : [];
   const selectedSupplierIngredientScopes = useMemo(() => {
     if (!selectedSupplier) return [];
@@ -139,6 +328,75 @@ export default function SuppliersPage() {
       `Formally dispatched EUDR Geolocation and CoC request pack to the compliance contact of ${selectedSupplier.name}. An automated tracking token has been attached to their upstream portal.`,
     );
     setTimeout(() => setEmailStatus(null), 6000);
+  };
+
+  const handleOpenEvaluation = () => {
+    if (!selectedSupplier) return;
+    const saved = localStorage.getItem(`gfi_supplier_eval_${selectedSupplier.id}`);
+    if (saved) {
+      try {
+        setEvalFormData(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error parsing supplier evaluation", e);
+        initializeNewEvalForm();
+      }
+    } else {
+      initializeNewEvalForm();
+    }
+    setIsEvalModalOpen(true);
+  };
+
+  const initializeNewEvalForm = () => {
+    setEvalFormData({
+      supplierName: selectedSupplier.name || "",
+      contactPerson: selectedSupplier.contactPerson || "",
+      address: selectedSupplier.address || "",
+      email: selectedSupplier.email || "",
+      fax: selectedSupplier.fax || "",
+      productsSupplied: selectedSupplier.commodities.join(", ") || "",
+      checklist: {
+        licenses_current: { status: "Yes", remarks: "" },
+        pest_control: { status: "Yes", remarks: "" },
+        pest_control_contractor: { status: "", remarks: "" },
+        inspection_records: { status: "Yes", remarks: "" },
+        inspecting_agency: { status: "", remarks: "" },
+        water_tested: { status: "Yes", remarks: "" },
+        cleaning_schedule: { status: "Yes", remarks: "" },
+        food_safety_training: { status: "Yes", remarks: "" },
+        environmental_testing: { status: "Yes", remarks: "" },
+        corrective_actions: { status: "Yes", remarks: "" },
+        mock_recalls: { status: "Yes", remarks: "" },
+        interior_exterior_clean: { status: "Yes", remarks: "" },
+        glass_policy: { status: "Yes", remarks: "" },
+        equipment_maintained: { status: "Yes", remarks: "" },
+        pm_program: { status: "Yes", remarks: "" },
+        storage_clean: { status: "Yes", remarks: "" },
+        no_standing_water: { status: "Yes", remarks: "" },
+        sewage_maintained: { status: "Yes", remarks: "" },
+        vehicle_inspections: { status: "Yes", remarks: "" },
+        lot_numbers: { status: "Yes", remarks: "" },
+        chemicals_stored: { status: "Yes", remarks: "" },
+        food_security_training: { status: "Yes", remarks: "" },
+        access_limited: { status: "Yes", remarks: "" },
+        traceability_forward_backward: { status: "Yes", remarks: "" },
+      }
+    });
+  };
+
+  const handleSaveEvaluation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSupplier) return;
+
+    localStorage.setItem(`gfi_supplier_eval_${selectedSupplier.id}`, JSON.stringify(evalFormData));
+    setIsEvalModalOpen(false);
+
+    editSupplier({
+      ...selectedSupplier,
+      nextAction: "Supplier evaluation checklist F-68 completed and saved.",
+    });
+
+    setEmailStatus(`Supplier evaluation checklist F-68 saved successfully for ${selectedSupplier.name}.`);
+    setTimeout(() => setEmailStatus(null), 5000);
   };
 
   const handleOpenGenerateLinks = () => {
@@ -204,8 +462,7 @@ export default function SuppliersPage() {
           : selectedSupplier.nextAction,
     });
     setEmailStatus(
-      `Generated ${generatedTokens.length} scoped link(s)${
-        reusedTokens.length > 0 ? `, reused ${reusedTokens.length} existing active link(s)` : ""
+      `Generated ${generatedTokens.length} scoped link(s)${reusedTokens.length > 0 ? `, reused ${reusedTokens.length} existing active link(s)` : ""
       } for ${selectedSupplier.name}.`,
     );
     setTimeout(() => setEmailStatus(null), 6000);
@@ -565,72 +822,57 @@ export default function SuppliersPage() {
                 </div>
 
                 <div className="pt-2 space-y-2 border-t border-border-soft/60">
-                  {selectedSupplier.onboardingStatus !== "APPROVED" ? (
-                    <Button size="sm" onClick={handleRequestOutreach} icon={<Send className="h-4 w-4" aria-hidden="true" />} fullWidth>
-                      Request geolocation file
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="secondary" onClick={handleOpenGenerateLinks} icon={<Link2 className="h-4 w-4" aria-hidden="true" />} fullWidth>
-                    Generate EUDR links
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleOpenEvaluation}
+                    icon={<FileText className="h-4 w-4" aria-hidden="true" />}
+                    fullWidth
+                  >
+                    Fill Supplier Evaluation Form
                   </Button>
                 </div>
               </Card>
             </Card>
 
-            <Card className="space-y-4">
-              <h3 className="text-lg font-bold text-brand-primary">Chain Requests</h3>
-              {selectedSupplierRequests.length === 0 ? (
-                <p className="text-sm text-text-secondary">No multi-tier EUDR request has been generated for this supplier yet.</p>
-              ) : (
-                <div className="overflow-y-auto max-h-[380px] space-y-3 pr-1">
-                  {selectedSupplierRequests.map((request) => {
-                    const node = supplyChainNodes.find((item) => item.id === request.targetNodeId);
-                    const portalUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${request.tokenLabel}`;
-                    return (
-                      <Card key={request.id} variant="inset" className="space-y-2 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <strong className="text-sm text-brand-primary">{request.tokenLabel}</strong>
-                          <StatusBadge status={toStatusTone(request.status)}>{humanize(request.status)}</StatusBadge>
-                        </div>
-                        <p className="text-xs text-text-secondary">
-                          {request.formType} form | {node ? getProductName(node.productId) : "Unknown product"} | {node?.materialName ?? "material path"} | Tier {node?.tier ?? "?"} | expires {request.expiresAt}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<Copy className="h-3.5 w-3.5" aria-hidden="true" />}
-                            onClick={() => {
-                              navigator.clipboard.writeText(portalUrl);
-                              setEmailStatus(`Link copied: ${portalUrl}`);
-                              setTimeout(() => setEmailStatus(null), 4000);
-                            }}
-                          >
-                            Copy link
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<Send className="h-3.5 w-3.5" aria-hidden="true" />}
-                            onClick={() => {
-                              setEmailStatus(
-                                `Simulated email sent to ${request.email || "supplier"} with EUDR portal link ${request.tokenLabel}.`,
-                              );
-                              setTimeout(() => setEmailStatus(null), 5000);
-                            }}
-                          >
-                            Send email
-                          </Button>
-                        </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className="space-y-4">
+                <h3 className="text-lg font-bold text-brand-primary">Linked Products</h3>
+                {selectedSupplier.linkedProductIds.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedSupplier.linkedProductIds.map((productId) => (
+                      <Card key={productId} variant="inset" className="p-3">
+                        <strong className="text-sm text-brand-primary">{getProductName(productId)}</strong>
                       </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-secondary">No linked products.</p>
+                )}
+              </Card>
 
+              <Card className="space-y-4">
+                <h3 className="text-lg font-bold text-brand-primary">Linked Shipments</h3>
+                {selectedSupplier.linkedConsignmentIds.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedSupplier.linkedConsignmentIds.map((consignmentId) => {
+                      const consignment = currentConsignments.find((item) => item.id === consignmentId);
+                      return (
+                        <Card key={consignmentId} variant="inset" className="space-y-1 p-3">
+                          <strong className="text-sm text-brand-primary">{consignment?.reference ?? consignmentId}</strong>
+                          <p className="text-xs text-text-secondary">
+                            {consignment?.gateStatus ? humanize(consignment.gateStatus) : "Unknown gate status"} |{" "}
+                            {consignment?.outputEligibility ? humanize(consignment.outputEligibility) : "Unknown eligibility"}
+                          </p>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-secondary">No linked consignments.</p>
+                )}
+              </Card>
+            </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="space-y-4">
@@ -683,45 +925,6 @@ export default function SuppliersPage() {
                 </TableRoot>
               </Card>
             </div>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="space-y-4">
-                <h3 className="text-lg font-bold text-brand-primary">Linked Products</h3>
-                {selectedSupplier.linkedProductIds.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedSupplier.linkedProductIds.map((productId) => (
-                      <Card key={productId} variant="inset" className="p-3">
-                        <strong className="text-sm text-brand-primary">{getProductName(productId)}</strong>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-text-secondary">No linked products.</p>
-                )}
-              </Card>
-
-              <Card className="space-y-4">
-                <h3 className="text-lg font-bold text-brand-primary">Linked Shipments</h3>
-                {selectedSupplier.linkedConsignmentIds.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedSupplier.linkedConsignmentIds.map((consignmentId) => {
-                      const consignment = currentConsignments.find((item) => item.id === consignmentId);
-                      return (
-                        <Card key={consignmentId} variant="inset" className="space-y-1 p-3">
-                          <strong className="text-sm text-brand-primary">{consignment?.reference ?? consignmentId}</strong>
-                          <p className="text-xs text-text-secondary">
-                            {consignment?.gateStatus ? humanize(consignment.gateStatus) : "Unknown gate status"} |{" "}
-                            {consignment?.outputEligibility ? humanize(consignment.outputEligibility) : "Unknown eligibility"}
-                          </p>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-text-secondary">No linked consignments.</p>
-                )}
-              </Card>
-            </div>
           </div>
         ) : (
           <Card className="p-10 text-center text-text-secondary">Select a supplier to view compliance details.</Card>
@@ -751,29 +954,21 @@ export default function SuppliersPage() {
 
             <form onSubmit={(e) => handleSaveSupplier(e, isEditModalOpen)} className="mt-4 space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <label className="text-sm font-semibold text-text-secondary">Supplier Company Name</label>
                   <Input required value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Sumatra Smallholders Group" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-text-secondary">Origin Country</label>
-                  <Input required value={formCountry} onChange={(e) => setFormCountry(e.target.value)} placeholder="e.g. Indonesia" />
+                  <SearchableCountryDropdown required value={formCountry} onChange={setFormCountry} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-text-secondary">Supplier Type</label>
                   <Select value={formType} onChange={(e) => setFormType(e.target.value)}>
-                    <option value="Grower / Smallholder Group">Grower / Smallholder Group</option>
-                    <option value="Processor">Processor</option>
-                    <option value="Manufacturer / Refiner">Manufacturer / Refiner</option>
-                    <option value="Intermediary Trader">Intermediary Trader</option>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Onboarding Tier</label>
-                  <Select value={formTier} onChange={(e) => setFormTier(Number(e.target.value))}>
-                    <option value={1}>Tier 1 (Direct Supplier)</option>
-                    <option value={2}>Tier 2 (Indirect Supplier)</option>
-                    <option value={3}>Tier 3 (Sub-Tier / Smallholder)</option>
+                    <option value="Intermediary Trader">Trader / Distritbuer / Importer</option>
+                    <option value="Processor">Manufacturer / Processor</option>
+                    <option value="Aggregator">Raw Material Aggregator / Consolidator</option>
+                    <option value="Farmer">Farmer / Producer</option>
                   </Select>
                 </div>
               </div>
@@ -961,7 +1156,7 @@ export default function SuppliersPage() {
             if (event.target === event.currentTarget) setViewingDoc(null);
           }}
         >
-          <Card className="w-full max-w-2xl overflow-hidden p-0 bg-white dark:bg-bg-surface shadow-2xl border border-border-soft rounded-2xl animate-in fade-in zoom-in-95 duration-200">
+          <Card className="w-full max-w-4xl overflow-hidden p-0 bg-white dark:bg-bg-surface shadow-2xl border border-border-soft rounded-2xl animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-border-soft p-5 bg-bg-surface-alt">
               <div className="flex items-center gap-3">
@@ -987,22 +1182,21 @@ export default function SuppliersPage() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto bg-slate-50/50 dark:bg-bg-surface/30">
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto bg-slate-50/50 dark:bg-bg-surface/30">
               {/* Document Info Grid */}
-              <div className="grid grid-cols-2 gap-4 bg-white dark:bg-bg-surface border border-border-soft p-4 rounded-xl shadow-sm">
+              <div className="grid grid-cols-4 gap-4 bg-white dark:bg-bg-surface border border-border-soft p-4 rounded-xl shadow-sm">
                 <div>
                   <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary">Document Type</span>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold border uppercase tracking-wider shadow-sm ${
-                    viewingDoc.type === "Declaration"
-                      ? "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]"
-                      : viewingDoc.type === "Certificate"
+                  <span className={`inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold border uppercase tracking-wider shadow-sm ${viewingDoc.type === "Declaration"
+                    ? "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]"
+                    : viewingDoc.type === "Certificate"
                       ? "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]"
                       : viewingDoc.type === "License"
-                      ? "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]"
-                      : viewingDoc.type === "Audit Record"
-                      ? "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]"
-                      : "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]"
-                  }`}>
+                        ? "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]"
+                        : viewingDoc.type === "Audit Record"
+                          ? "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]"
+                          : "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]"
+                    }`}>
                     {viewingDoc.type}
                   </span>
                 </div>
@@ -1023,32 +1217,13 @@ export default function SuppliersPage() {
                 </div>
               </div>
 
-              {/* Simulated Document Sheet */}
-              <div className="relative border border-border-soft bg-white dark:bg-bg-surface-alt rounded-xl p-6 shadow-sm overflow-hidden min-h-[220px]">
-                {/* Decorative Stamp watermark */}
-                <div className="absolute right-4 top-4 select-none opacity-[0.08] dark:opacity-[0.15] pointer-events-none transform rotate-12">
-                  <ShieldCheck className="h-36 w-36 text-brand-primary" />
-                </div>
-
-                <div className="relative z-10 space-y-4">
-                  <div className="flex items-center justify-between border-b border-border-soft/60 pb-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">EUDR Compliance Evidence</span>
-                    <span className="text-xs font-mono text-text-muted">REF: {`EUDR-${viewingDoc.id.replace("doc-", "").substring(0, 8).toUpperCase()}`}</span>
-                  </div>
-
-                  <div className="space-y-3 text-xs leading-relaxed text-text-primary/95">
-                    <p className="font-semibold text-text-primary">To Whom It May Concern,</p>
-                    <p>
-                      This certificate serves as official verification that the production, processing, and distribution procedures carried out by <strong className="text-brand-primary">{selectedSupplier.name}</strong> for all listed shipments are fully compliant with the requirements of the <strong>European Union Deforestation Regulation (EUDR, Regulation (EU) 2023/1115)</strong>.
-                    </p>
-                    <p>
-                      The undersigned verifies that all raw materials supplied are traceable to forest-deforestation-free plots established prior to December 31, 2020, and conform strictly with relevant local legislation governing land use, environmental preservation, and labor rights.
-                    </p>
-                    <p className="pt-2 text-[11px] text-text-secondary font-medium font-sans">
-                      Traceability Checksums, Polygon Mapping Records, and Chain-of-Custody (CoC) audit trail attachments are archived within the FOS Evidence library index.
-                    </p>
-                  </div>
-                </div>
+              {/* PDF Viewer */}
+              <div className="border border-border-soft bg-white dark:bg-bg-surface-alt rounded-xl shadow-sm overflow-hidden h-[500px]">
+                <iframe
+                  src="/test.pdf"
+                  className="w-full h-full border-none"
+                  title="PDF Viewer"
+                />
               </div>
             </div>
 
@@ -1085,6 +1260,210 @@ export default function SuppliersPage() {
               </Button>
             </div>
           </Card>
+        </div>
+      ) : null}
+
+      {isEvalModalOpen ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsEvalModalOpen(false);
+          }}
+        >
+          <div className="border border-border-soft rounded-2xl bg-white dark:bg-bg-surface p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 w-full max-w-4xl max-h-[92vh] overflow-y-auto flex flex-col gap-4">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-center text-[10px] uppercase tracking-wider font-bold text-text-muted border-b border-border-soft pb-3 shrink-0">
+              <span>Controlled Document</span>
+              <button
+                type="button"
+                onClick={() => setIsEvalModalOpen(false)}
+                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-surface-hover transition-all duration-150 absolute right-4 top-3"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <span className="text-brand-primary bg-brand-accent-soft/20 px-2.5 py-0.5 rounded mr-8">F-68</span>
+            </div>
+
+            {/* Document Title */}
+            <div className="text-center shrink-0">
+              <h2 className="text-lg font-black text-brand-primary uppercase tracking-wide">Supplier Evaluation Checklist</h2>
+              <p className="text-xs text-text-secondary italic mt-0.5">* Please complete the following. Thank you in advance for your cooperation.</p>
+            </div>
+
+            {/* Form Fields */}
+            <form onSubmit={handleSaveEvaluation} className="flex-1 overflow-y-auto space-y-6 pr-1 internal-scroll">
+              <div className="grid gap-4 md:grid-cols-2 bg-bg-surface-alt border border-border-soft p-4 rounded-xl shadow-sm">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-text-secondary">Supplier Name</label>
+                  <Input
+                    required
+                    value={evalFormData.supplierName}
+                    onChange={(e) => setEvalFormData((prev: any) => ({ ...prev, supplierName: e.target.value }))}
+                    className="bg-white dark:bg-bg-surface text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-text-secondary">Contact Person</label>
+                  <Input
+                    value={evalFormData.contactPerson}
+                    onChange={(e) => setEvalFormData((prev: any) => ({ ...prev, contactPerson: e.target.value }))}
+                    className="bg-white dark:bg-bg-surface text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-text-secondary">Supplier Address</label>
+                  <Input
+                    value={evalFormData.address}
+                    onChange={(e) => setEvalFormData((prev: any) => ({ ...prev, address: e.target.value }))}
+                    className="bg-white dark:bg-bg-surface text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-text-secondary">Supplier Email</label>
+                  <Input
+                    type="email"
+                    value={evalFormData.email}
+                    onChange={(e) => setEvalFormData((prev: any) => ({ ...prev, email: e.target.value }))}
+                    className="bg-white dark:bg-bg-surface text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-text-secondary">Fax</label>
+                  <Input
+                    value={evalFormData.fax}
+                    onChange={(e) => setEvalFormData((prev: any) => ({ ...prev, fax: e.target.value }))}
+                    className="bg-white dark:bg-bg-surface text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-text-secondary">Products Supplied</label>
+                  <Input
+                    value={evalFormData.productsSupplied}
+                    onChange={(e) => setEvalFormData((prev: any) => ({ ...prev, productsSupplied: e.target.value }))}
+                    className="bg-white dark:bg-bg-surface text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Requirement Table */}
+              <div className="border border-border-soft rounded-xl overflow-hidden shadow-sm bg-white dark:bg-bg-surface">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-bg-surface-alt border-b border-border-soft text-[10px] uppercase tracking-wider font-bold text-text-primary">
+                      <th className="p-3 w-1/2">Requirement</th>
+                      <th className="p-3 text-center w-1/4">Yes / No / NA</th>
+                      <th className="p-3 w-1/4">Remarks / Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-soft/60">
+                    {EVAL_SECTIONS.map((sec) => (
+                      <React.Fragment key={sec.title}>
+                        {/* Section Header Row */}
+                        <tr className="bg-slate-50 dark:bg-bg-surface-alt font-black text-xs text-brand-primary">
+                          <td colSpan={3} className="p-2.5 font-bold tracking-wide border-y border-border-soft/80">
+                            {sec.title}
+                          </td>
+                        </tr>
+                        {sec.items.map((item) => (
+                          <tr key={item.id} className="hover:bg-bg-surface-alt/40 transition-colors duration-150">
+                            <td className="p-3 text-xs text-text-primary font-medium leading-normal">
+                              {item.label}
+                            </td>
+                            <td className="p-3 text-center align-middle">
+                              {item.type !== "text" ? (
+                                <div className="flex gap-1 justify-center">
+                                  {["Yes", "No", "N/A"].map((opt) => {
+                                    const isSelected = evalFormData.checklist?.[item.id]?.status === opt;
+                                    return (
+                                      <button
+                                        key={opt}
+                                        type="button"
+                                        onClick={() => {
+                                          setEvalFormData((prev: any) => {
+                                            const checklist = { ...prev.checklist };
+                                            checklist[item.id] = {
+                                              ...checklist[item.id],
+                                              status: opt,
+                                            };
+                                            return { ...prev, checklist };
+                                          });
+                                        }}
+                                        className={cn(
+                                          "px-2.5 py-1 text-[10px] font-bold rounded-md border transition-all duration-150 select-none",
+                                          isSelected
+                                            ? opt === "Yes"
+                                              ? "bg-emerald-50 border-emerald-500 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                              : opt === "No"
+                                              ? "bg-rose-50 border-rose-500 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                                              : "bg-slate-100 border-slate-400 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                            : "bg-white border-border-soft text-text-secondary hover:bg-slate-50 dark:bg-bg-surface dark:hover:bg-slate-800"
+                                        )}
+                                      >
+                                        {opt}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-text-muted italic">—</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <Input
+                                value={evalFormData.checklist?.[item.id]?.remarks || ""}
+                                onChange={(e) => {
+                                  const textVal = e.target.value;
+                                  setEvalFormData((prev: any) => {
+                                    const checklist = { ...prev.checklist };
+                                    checklist[item.id] = {
+                                      ...checklist[item.id],
+                                      remarks: textVal,
+                                    };
+                                    return { ...prev, checklist };
+                                  });
+                                }}
+                                placeholder={item.type === "text" ? "Enter value..." : "Add remarks..."}
+                                className="h-8 py-1 text-xs"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Document Footer Info */}
+              <div className="border-t border-border-soft pt-4 flex flex-col md:flex-row justify-between items-center text-[9px] uppercase font-bold tracking-wider text-text-muted gap-2 text-center md:text-left shrink-0">
+                <div className="space-y-0.5">
+                  <p>Gujranwala Food Industries (Pvt) Ltd</p>
+                  <p>Gujranwala Pakistan</p>
+                </div>
+                <div className="space-y-0.5 text-center">
+                  <p>F-68 Supplier Evaluation Checklist • Version # 03</p>
+                  <p className="text-brand-primary">Confidential</p>
+                </div>
+                <div className="space-y-0.5 text-right">
+                  <p>Issue Date: 20-03-20</p>
+                  <p>Revision Date: 23-02-23</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setIsEvalModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">Save Evaluation</Button>
+              </div>
+            </form>
+          </div>
         </div>
       ) : null}
     </div>

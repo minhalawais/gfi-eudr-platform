@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
-import { Send, Copy, Eye } from "lucide-react";
+import { Send, Copy, Eye, FileText } from "lucide-react";
 
 function getCommodityIcon(name: string): string {
   const n = name.toLowerCase();
@@ -19,7 +19,7 @@ import {
   IngredientTraceabilityViewModel,
   TraceabilityNodeDetails,
 } from "@/lib/ingredient-traceability";
-import { SupplyChainNode } from "@/lib/gfi-dummy-data";
+import { SupplyChainNode, getProductName } from "@/lib/gfi-dummy-data";
 import { useSession } from "@/components/ui/PermissionGuard";
 import {
   ModalShell,
@@ -31,6 +31,9 @@ import {
   FormActions,
   Input,
   Select,
+  Card,
+  Button,
+  StatusBadge,
 } from "@/components/ui";
 
 type StatusFilter = SupplyChainNode["status"] | "ALL";
@@ -63,6 +66,22 @@ function toSentenceCase(value: string): string {
     .toLowerCase()
     .replace(/_/g, " ")
     .replace(/\b\w/g, (part) => part.toUpperCase());
+}
+
+function humanize(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
+function toStatusTone(value: string): any {
+  const normalized = value.toLowerCase();
+  if (normalized === "closed") return "ready";
+  if (normalized.includes("approve")) return "approved";
+  if (normalized.includes("block")) return "blocked";
+  if (normalized.includes("change")) return "changes_requested";
+  if (normalized.includes("pending")) return "pending";
+  if (normalized.includes("review")) return "under_review";
+  if (normalized.includes("request")) return "requested";
+  return "info";
 }
 
 function NodeGlyph({ actorType }: { actorType: SupplyChainNode["actorType"] }) {
@@ -395,7 +414,17 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
   const [declarationModalToken, setDeclarationModalToken] = useState("");
   const [declarationNotice, setDeclarationNotice] = useState<string | null>(null);
 
-  const { addSupplyChainNode, addSupplyChainEdge, eudrFormRequests, generateEudrFormRequest, suppliers } = useSession();
+  const {
+    addSupplyChainNode,
+    addSupplyChainEdge,
+    eudrFormRequests,
+    generateEudrFormRequest,
+    suppliers,
+    supplyChainNodes
+  } = useSession();
+
+  // Local email status for Chain Requests
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
 
   // Add Actor Modal State
   const [isAddActorModalOpen, setIsAddActorModalOpen] = useState(false);
@@ -411,6 +440,20 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
   const [newActorStatus, setNewActorStatus] = useState<SupplyChainNode["status"]>("COMPLETE");
 
   const selectedRoot = viewModel.rootById[selectedRootId] ?? viewModel.roots[0];
+
+  const selectedRootRequests = useMemo(() => {
+    if (!selectedRoot) return [];
+    return eudrFormRequests.filter((request) => {
+      if (request.productId === selectedRoot.productId && request.ingredientId === selectedRoot.ingredientId) {
+        return true;
+      }
+      const node = supplyChainNodes.find((item) => item.id === request.targetNodeId);
+      if (node && node.productId === selectedRoot.productId && node.ingredientId === selectedRoot.ingredientId) {
+        return true;
+      }
+      return false;
+    });
+  }, [eudrFormRequests, selectedRoot, supplyChainNodes]);
 
   useEffect(() => {
     if (!selectedRoot) return;
@@ -934,6 +977,76 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
               {renderMergedTreeMap("inline")}
             </div>
           </div>
+        </div>
+
+        {/* Chain Requests Card */}
+        <div className="traceability-studio__workspace mt-6">
+          <Card className="p-5 rounded-xl border border-border-soft bg-bg-surface shadow-sm space-y-4">
+            <div className="traceability-studio__section-title flex justify-between items-center pb-3 border-b border-border-soft/60">
+              <h2 className="text-base font-extrabold text-brand-primary uppercase tracking-wider">Chain Requests</h2>
+              <span className="text-[10px] font-bold text-brand-primary bg-brand-primary/5 border border-brand-primary/10 px-3 py-1 rounded-full">
+                {selectedRootRequests.length} requests
+              </span>
+            </div>
+
+            {emailNotice && (
+              <Card variant="inset" className="border-brand-accent bg-brand-accent-soft text-xs text-brand-primary py-2 px-3">
+                <p className="font-semibold">{emailNotice}</p>
+              </Card>
+            )}
+
+            {selectedRootRequests.length === 0 ? (
+              <p className="text-sm text-text-secondary">No multi-tier EUDR requests have been generated for this ingredient chain yet.</p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 max-h-[380px] overflow-y-auto pr-1 internal-scroll">
+                {selectedRootRequests.map((request) => {
+                  const node = supplyChainNodes.find((item) => item.id === request.targetNodeId);
+                  const portalUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/supplier?token=${request.tokenLabel}`;
+                  return (
+                    <Card key={request.id} variant="inset" className="space-y-2.5 p-4 bg-bg-surface border border-border-soft/60 hover:border-border-strong/60 transition-all duration-150">
+                      <div className="flex items-center justify-between gap-3">
+                        <strong className="text-sm text-brand-primary font-bold">{request.tokenLabel}</strong>
+                        <StatusBadge status={toStatusTone(request.status)}>{humanize(request.status)}</StatusBadge>
+                      </div>
+                      <p className="text-[11px] text-text-secondary font-medium leading-relaxed">
+                        <span className="font-bold text-text-primary">{request.formType} Form</span> • {node ? getProductName(node.productId) : "Unknown product"} • {node?.materialName ?? "material path"} • Tier {node?.tier ?? "?"} <br />
+                        <span className="text-[10px] text-text-muted">Expires: {request.expiresAt}</span>
+                      </p>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          icon={<Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                          onClick={() => {
+                            navigator.clipboard.writeText(portalUrl);
+                            setEmailNotice(`Link copied: ${portalUrl}`);
+                            setTimeout(() => setEmailNotice(null), 4000);
+                          }}
+                        >
+                          Copy Link
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          icon={<Send className="h-3.5 w-3.5" aria-hidden="true" />}
+                          onClick={() => {
+                            setEmailNotice(
+                              `Simulated email sent to ${request.email || "supplier"} with EUDR portal link ${request.tokenLabel}.`,
+                            );
+                            setTimeout(() => setEmailNotice(null), 5000);
+                          }}
+                        >
+                          Send Email
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
         </div>
 
       </div>

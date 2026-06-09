@@ -5004,7 +5004,12 @@ const GULF_COUNTRY_TARGETS = [
   { country: "Kuwait", destination: "Kuwait City, Kuwait", targetCount: 1, templateId: "con-choc-016", refCode: "KWT" },
 ] as const;
 
-const DASHBOARD_COUNTRY_TARGETS = [...EUROPE_COUNTRY_TARGETS, ...GULF_COUNTRY_TARGETS] as const;
+const OTHER_COUNTRY_TARGETS = [
+  { country: "Singapore", destination: "Singapore, Singapore", targetCount: 2, templateId: "con-choc-017", refCode: "SGP" },
+  { country: "South Africa", destination: "Cape Town, South Africa", targetCount: 1, templateId: "con-choc-018", refCode: "ZAF" },
+] as const;
+
+const DASHBOARD_COUNTRY_TARGETS = [...EUROPE_COUNTRY_TARGETS, ...GULF_COUNTRY_TARGETS, ...OTHER_COUNTRY_TARGETS] as const;
 
 const SYNTHETIC_DISPATCH_DATES = [
   "08-01-2026",
@@ -5132,6 +5137,16 @@ function addSyntheticDashboardConsignments(records: ConsignmentRecord[]) {
         shipmentStatus === "TO_BE_SHIPPED" && index % 3 === 2
           ? "—"
           : SYNTHETIC_DISPATCH_DATES[syntheticCounter % SYNTHETIC_DISPATCH_DATES.length];
+
+      // Keep at least some non-EU/non-Gulf routes inside the dashboard's default April 2026 window
+      // so the "Local" export market bucket is represented in filtered dashboard charts.
+      if (target.refCode === "SGP") {
+        clone.dispatchDate = index % 2 === 0 ? "16-04-2026" : "30-04-2026";
+      }
+
+      if (target.refCode === "ZAF") {
+        clone.dispatchDate = "23-04-2026";
+      }
       clone.dispatchLines = (clone.dispatchLines ?? []).map((line, lineIndex) => {
         const adjustedCartons = Math.max(24, Math.round(line.totalCartons * (0.88 + ((index + lineIndex) % 4) * 0.06)));
         const adjustedDips = Math.max(4, Math.round(line.dipsCartons * (0.85 + ((index + lineIndex) % 3) * 0.08)));

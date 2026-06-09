@@ -16,8 +16,11 @@ export async function authenticateDemoCredentials(
 ): Promise<DemoAuthenticationResult> {
   await new Promise((resolve) => window.setTimeout(resolve, DEMO_AUTH_DELAY_MS));
 
+  const normalizedCredential = email.trim().toLowerCase();
+  const normalizedAccountEmail = accountEmail.trim().toLowerCase();
+  const accountUsername = normalizedAccountEmail.split("@")[0] ?? normalizedAccountEmail;
   const authenticated =
-    email.trim().toLowerCase() === accountEmail.trim().toLowerCase()
+    (normalizedCredential === normalizedAccountEmail || normalizedCredential === accountUsername)
     && password === DEMO_CREDENTIALS.password;
 
   if (authenticated) {

@@ -10,11 +10,12 @@ import {
   Eye,
   EyeOff,
   FileCheck2,
+  Globe2,
+  Leaf,
+  Link2,
   LockKeyhole,
-  Mail,
-  MapPinned,
-  Network,
   ShieldCheck,
+  User,
 } from "lucide-react";
 
 import { Button, Input } from "@/components/ui";
@@ -30,18 +31,21 @@ type LoginErrors = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const WORKFLOW_ITEMS = [
-  { icon: Network, label: "End-to-end supply chain traceability" },
-  { icon: MapPinned, label: "Shipment and consignment control" },
-  { icon: FileCheck2, label: "Compliance and evidence readiness" },
+const CAPABILITY_ITEMS = [
+  { icon: Link2, label: "Complete Traceability" },
+  { icon: ShieldCheck, label: "Compliance Assurance" },
+  { icon: FileCheck2, label: "Audit Ready Records" },
+  { icon: Globe2, label: "Sustainable Future" },
 ] as const;
+
 
 function validateLogin(email: string, password: string): LoginErrors {
   const errors: LoginErrors = {};
+  const trimmedEmail = email.trim();
 
-  if (!email.trim()) {
-    errors.email = "Email address is required.";
-  } else if (!EMAIL_PATTERN.test(email.trim())) {
+  if (!trimmedEmail) {
+    errors.email = "Username or email is required.";
+  } else if (trimmedEmail.includes("@") && !EMAIL_PATTERN.test(trimmedEmail)) {
     errors.email = "Enter a valid email address.";
   }
 
@@ -50,47 +54,6 @@ function validateLogin(email: string, password: string): LoginErrors {
   }
 
   return errors;
-}
-
-function GeospatialBackground({ reduceMotion }: { reduceMotion: boolean | null }) {
-  return (
-    <div className={styles.background} aria-hidden="true">
-      <div className={styles.grid} />
-      <svg className={styles.mapLines} viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
-        <path
-          d="M-80 770 C165 620 264 722 438 555 C618 381 790 468 948 298 C1088 147 1280 188 1524 38"
-          fill="none"
-          stroke="rgba(14,90,70,0.08)"
-          strokeWidth="52"
-          strokeLinecap="round"
-        />
-        <motion.path
-          d="M-80 770 C165 620 264 722 438 555 C618 381 790 468 948 298 C1088 147 1280 188 1524 38"
-          fill="none"
-          stroke="rgba(14,90,70,0.24)"
-          strokeWidth="2"
-          strokeDasharray="9 12"
-          initial={reduceMotion ? false : { pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: 1 }}
-          transition={{ duration: 1.8, ease: "easeOut" }}
-        />
-        <path
-          d="M100 100 L354 76 L446 226 L292 336 L64 278 Z"
-          fill="rgba(255,255,255,0.22)"
-          stroke="rgba(14,90,70,0.12)"
-          strokeWidth="2"
-          strokeDasharray="8 10"
-        />
-        <path
-          d="M1040 572 L1320 516 L1460 682 L1270 842 L1022 760 Z"
-          fill="rgba(255,255,255,0.2)"
-          stroke="rgba(14,90,70,0.11)"
-          strokeWidth="2"
-          strokeDasharray="8 10"
-        />
-      </svg>
-    </div>
-  );
 }
 
 export function LoginExperience() {
@@ -125,7 +88,7 @@ export function LoginExperience() {
     const result = await authenticateDemoCredentials(email, password, accountProfile.email);
     if (!result.authenticated) {
       setErrors({
-        form: "The email or password is incorrect. Check the demo credentials and try again.",
+        form: "The username, email, or password is incorrect. Check the demo credentials and try again.",
       });
       setIsSubmitting(false);
       return;
@@ -137,89 +100,76 @@ export function LoginExperience() {
 
   return (
     <main className={styles.page}>
-      <GeospatialBackground reduceMotion={reduceMotion} />
+      <div className={styles.background}>
+        <Image
+          src="/login background.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className={styles.backgroundImage}
+        />
+        <div className={styles.backgroundVeil} />
+      </div>
 
       <div className={styles.shell}>
-        <header className={styles.header}>
-          <div className={styles.brand}>
-            <div className={styles.jojoLogo}>
-              <Image
-                src="/jojo_logo.png"
-                alt="Gujranwala Food Industries"
-                width={218}
-                height={76}
-                className="h-auto w-auto object-contain"
-                priority
-              />
+        <motion.section
+          initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: [0.2, 0.8, 0.2, 1] }}
+          className={styles.layout}
+        >
+          <aside className={styles.hero}>
+            <div className={styles.heroInner}>
+              <div className={styles.brandWrap}>
+                <Image
+                  src="/jojo_logo.png"
+                  alt="Jojo"
+                  width={140}
+                  height={67}
+                  className={styles.logo}
+                  priority
+                />
+                <p className={styles.companyName}>Gujranwala Food Industries (Pvt.) Ltd.</p>
+              </div>
+
+              <div className={styles.heroCopy}>
+                <h1>Digital Traceability &amp; Compliance Platform</h1>
+                <p>End-to-end visibility. Trusted supply chains. Assured compliance.</p>
+              </div>
+
+              <div className={styles.capabilityGrid}>
+                {CAPABILITY_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.label} className={styles.capabilityCard}>
+                      <span className={styles.capabilityIcon}>
+                        <Icon />
+                      </span>
+                      <span>{item.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
             </div>
-            <div className={styles.brandCopy}>
-              <strong>Gujranwala Food Industries</strong>
-              <span>Traceability and compliance workspace</span>
-            </div>
-          </div>
-        </header>
+          </aside>
 
-        <div className={styles.center}>
-          <motion.section
-            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
-            className={styles.panel}
-            aria-labelledby="login-heading"
-          >
-            <aside className={styles.context}>
-              <div className={styles.contextGlow} />
-              <div className={styles.contextGrid} />
-
-              <div className={styles.contextContent}>
-                <h1>Trace every ingredient. Prove every origin.</h1>
-                <p>
-                  Connect products to suppliers, producer plots and verified evidence before release to the EU market.
-                </p>
-
-                <div className={styles.workflowList}>
-                  {WORKFLOW_ITEMS.map((item, index) => {
-                    const Icon = item.icon;
-                    return (
-                      <div key={item.label} className={styles.workflowItem}>
-                        <span className={styles.workflowIcon}>
-                          <Icon />
-                        </span>
-                        <div>
-                          <strong>{item.label}</strong>
-                          <span>0{index + 1}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+          <div className={styles.authColumn}>
+            <div className={styles.authCard} aria-labelledby="login-heading">
+              <div className={styles.badgeWrap} aria-hidden="true">
+                <div className={styles.badgeCircle}>
+                  <ShieldCheck />
                 </div>
               </div>
 
-              <div className={styles.contextFooter}>
-                <Link
-                  href="https://fruitofsustainability.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className={styles.contextFooterLink}
-                  aria-label="Visit Fruit of Sustainability website"
-                >
-                  <Image
-                    src="/fos_square_logo.png"
-                    alt="Fruit of Sustainability"
-                    width={24}
-                    height={24}
-                    className="h-6 w-6 rounded-md"
-                  />
-                  <span>Developed by Fruit of Sustainability</span>
-                </Link>
-              </div>
-            </aside>
-
-            <div className={styles.auth}>
               <div className={styles.authHeading}>
-                <p>Workspace access</p>
-                <h2 id="login-heading">Welcome back</h2>
-                <span>Log in to continue to the GFI EUDR compliance workspace.</span>
+                <h2 id="login-heading">
+                  Welcome Back! <Leaf aria-hidden="true" />
+                </h2>
+                <p>
+                  Sign in to continue to JOJO <span>Traceability &amp; Compliance Platform</span>
+                </p>
               </div>
 
               <div className={styles.formAlertSlot}>
@@ -233,12 +183,12 @@ export function LoginExperience() {
 
               <form className={styles.form} noValidate onSubmit={handleSubmit}>
                 <div className={styles.field}>
-                  <label htmlFor="login-email">Email address</label>
+                  <label htmlFor="login-email">Username / Email</label>
                   <div className={styles.inputWrap}>
-                    <Mail aria-hidden="true" />
+                    <User aria-hidden="true" />
                     <Input
                       id="login-email"
-                      type="email"
+                      type="text"
                       autoComplete="username"
                       inputMode="email"
                       value={email}
@@ -252,7 +202,7 @@ export function LoginExperience() {
                         }
                       }}
                       className={styles.input}
-                      placeholder="name@company.com"
+                      placeholder="Enter your username or email"
                     />
                   </div>
                   <p id="login-email-error" className={styles.fieldError} aria-live="polite">
@@ -295,24 +245,53 @@ export function LoginExperience() {
                   </p>
                 </div>
 
-                <Button
-                  type="submit"
-                  fullWidth
-                  loading={isSubmitting}
-                  className={styles.submit}
-                >
-                  {isSubmitting ? "Opening compliance workspace" : "Log in to workspace"}
-                  {!isSubmitting ? <ArrowRight className="h-4 w-4" /> : null}
+                <div className={styles.formMeta}>
+                  <label className={styles.checkbox}>
+                    <input type="checkbox" defaultChecked />
+                    <span>Remember me</span>
+                  </label>
+                  <Link href="#" className={styles.forgotLink}>
+                    Forgot Password?
+                  </Link>
+                </div>
+
+                <Button type="submit" fullWidth loading={isSubmitting} className={styles.submit}>
+                  {isSubmitting ? "Opening workspace" : "Sign In"}
+                  {!isSubmitting ? <ArrowRight className="h-5 w-5" /> : null}
                 </Button>
               </form>
 
-              <div className={styles.authFooter}>
-                <ShieldCheck />
-                <span>Need access? Contact your administrator.</span>
+              <div className={styles.divider}>
+                <span>or continue with</span>
+              </div>
+
+              <div className={styles.socialGrid}>
+                <button type="button" className={styles.socialButton}>
+                  <span className={styles.microsoftMark} aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                  <span>Microsoft</span>
+                </button>
+
+                <button type="button" className={styles.socialButton}>
+                  <span className={styles.googleMark} aria-hidden="true">
+                    G
+                  </span>
+                  <span>Google</span>
+                </button>
+              </div>
+
+              <div className={styles.cardFooter}>
+                <LockKeyhole />
+                <span>Secure • Reliable • Compliant</span>
               </div>
             </div>
-          </motion.section>
-        </div>
+
+          </div>
+        </motion.section>
       </div>
     </main>
   );
