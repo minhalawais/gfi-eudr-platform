@@ -234,6 +234,31 @@ export default function EudrComplianceDashboard() {
     }) : [],
     [approvedPlotCount, clearPlotCount, dossierCompletionPercent, evidenceCount, selectedIngredientItem, selectedIngredientPlots.length],
   );
+
+  const FOCUS_AREAS: { key: string; label: string; roles: string[] }[] = [
+    { key: "land_use", label: "Land use rights", roles: ["LAND_RIGHTS_EVIDENCE"] },
+    { key: "environment", label: "Environmental protection", roles: ["SUSTAINABILITY_CERTIFICATE", "LEGAL_LICENSE"] },
+    { key: "forest", label: "Forest-related rules", roles: ["SUSTAINABILITY_CERTIFICATE", "CHAIN_OF_CUSTODY_SUPPORT", "GEOLOCATION_FILE"] },
+    { key: "third_parties", label: "Third parties’ rights (tenure)", roles: ["LAND_RIGHTS_EVIDENCE", "INTERMEDIARY_DECLARATION", "FARMER_DECLARATION"] },
+    { key: "labour", label: "Labour & human rights", roles: ["LABOUR_RIGHTS_EVIDENCE"] },
+    { key: "fpic", label: "Free, Prior & Informed Consent (FPIC)", roles: ["LAND_RIGHTS_EVIDENCE", "INTERMEDIARY_DECLARATION", "FARMER_DECLARATION"] },
+    { key: "trade", label: "Tax / Anti‑corruption / Trade & Customs", roles: ["UPSTREAM_TRADE_PROOF", "LEGAL_LICENSE"] },
+  ];
+
+  const focusAreaCounts = useMemo(() => {
+    const nodeIds = new Set(selectedIngredientNodes.map((n) => n.id));
+    const attachments = eudrEvidenceAttachments.filter((a) => nodeIds.has(a.nodeId) && a.status === "ATTACHED");
+    return FOCUS_AREAS.map((area) => {
+      const count = attachments.filter((att) => area.roles.includes(att.documentRole)).length;
+      const rolesPresent = area.roles.filter((role) => attachments.some((att) => att.documentRole === role));
+      const coverage = area.roles.length > 0 ? Math.round((rolesPresent.length / area.roles.length) * 100) : 0;
+      return {
+        ...area,
+        count,
+        coverage,
+      };
+    });
+  }, [eudrEvidenceAttachments, selectedIngredientNodes]);
   const applicabilityTone = selectedIngredientItem ? getApplicabilityTone(selectedIngredientItem.relevance) : "info";
   const applicabilityLabel = selectedIngredientItem ? getApplicabilityLabel(selectedIngredientItem.relevance) : "Classification unavailable";
   const applicabilityCopy = selectedIngredientItem ? getApplicabilityCopy(selectedIngredientItem) : "No ingredient classification data is available.";
@@ -421,8 +446,6 @@ export default function EudrComplianceDashboard() {
         description="Decision hub for DDS filing, legality evidence, origin-country risk, and plot validation."
         actions={
           <div className="flex items-center gap-2">
-            <Tag tone="brand">Target Cutoff: Dec 31, 2020</Tag>
-            <Tag tone="neutral">TRACES NT Simulator</Tag>
             <Button size="sm" variant="secondary" onClick={() => setShowCommodityRepository(true)}>
               EUDR Commodity Repository
             </Button>
@@ -452,7 +475,7 @@ export default function EudrComplianceDashboard() {
         <div className="grid gap-6 xl:grid-cols-[330px_minmax(0,1fr)]">
           <Card className="flex flex-col gap-4 p-5 xl:sticky xl:top-6 xl:max-h-[calc(100vh-8rem)] xl:overflow-hidden">
             <div className="border-b border-border-soft pb-3">
-              <h2 className="text-lg font-bold text-brand-primary">BOM Ingredients Ledger</h2>
+              <h2 className="text-lg font-bold text-brand-primary">Ingredients Ledger</h2>
               <p className="text-xs text-text-secondary">Select an ingredient to review risk, legality, and DDS readiness.</p>
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
@@ -584,6 +607,51 @@ export default function EudrComplianceDashboard() {
                   </p>
                 </div>
                 <div className="space-y-2.5">
+                    <Card className="rounded-2xl border border-border-soft bg-bg-surface-alt/60 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">EUDR Focus Areas — Evidence Attached</h4>
+                          <p className="text-xs text-text-secondary">Quick view of evidence coverage across EUDR focus areas for this ingredient.</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 overflow-x-auto">
+                        <TableRoot className="w-full">
+                          <Table>
+                            <TableHead>
+                              <TableRow>
+                                <TableHeaderCell>Focus area</TableHeaderCell>
+                                <TableHeaderCell className="text-right">Evidence files</TableHeaderCell>
+                                <TableHeaderCell className="text-right">Coverage</TableHeaderCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {focusAreaCounts.map((area) => (
+                                <TableRow key={area.key}>
+                                  <TableCell>
+                                    <div className="flex items-center gap-3">
+                                      <div className="text-sm font-semibold text-text-primary">{area.label}</div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="inline-flex items-center justify-end gap-2">
+                                      <div className="rounded-full bg-bg-surface px-3 py-1 text-sm font-semibold text-text-primary">{area.count}</div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right w-40">
+                                    <div className="flex items-center justify-end gap-3">
+                                      <div className="w-32 rounded-full bg-border-soft h-2 overflow-hidden">
+                                        <div className="h-2 bg-emerald-500" style={{ width: `${area.coverage}%` }} />
+                                      </div>
+                                      <div className="text-sm font-semibold text-text-primary">{area.coverage}%</div>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableRoot>
+                      </div>
+                    </Card>
                   {checklistItems.map((item) => (
                     <div key={item.id} className="flex flex-col gap-2 rounded-[20px] border border-border-soft bg-bg-surface-alt/80 px-4 py-3 md:flex-row md:items-center md:justify-between">
                       <div className="space-y-0.5">

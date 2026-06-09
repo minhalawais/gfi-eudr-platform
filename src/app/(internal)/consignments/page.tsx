@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/ui/PermissionGuard";
-import { Globe, Lock, Package, CheckCircle2, Microscope, ClipboardList, Tag as TagIcon, Plus, Edit2, Trash2 } from "lucide-react";
+import { Globe, Lock, Package, CheckCircle2, Microscope, ClipboardList, Tag as TagIcon, Plus, Edit2, Trash2, FileCheck2 } from "lucide-react";
 import { ConsignmentRecord, DispatchLine, GateIssue, getScenarioData } from "@/lib/gfi-dummy-data";
 import {
   Button,
@@ -15,6 +15,7 @@ import {
   Tag,
 } from "@/components/ui";
 import type { RiskTone, StatusTone } from "@/lib/ui-semantics";
+import { EudrComplianceDataPackModal } from "@/components/traceability/EudrComplianceDataPackModal";
 
 const GATE_STATUS_MAP: Record<"READY" | "BLOCKED" | "REVIEW_REQUIRED", StatusTone> = {
   READY: "ready",
@@ -22,17 +23,29 @@ const GATE_STATUS_MAP: Record<"READY" | "BLOCKED" | "REVIEW_REQUIRED", StatusTon
   REVIEW_REQUIRED: "review_required",
 };
 
-const ELIGIBILITY_STATUS_MAP: Record<"PACKAGE_READY" | "HELD" | "SCOPE_REVIEW", StatusTone> = {
-  PACKAGE_READY: "ready",
-  HELD: "held",
-  SCOPE_REVIEW: "review_required",
-};
-
-const TRACE_STATUS_MAP: Record<"TRACEABLE" | "BLOCKED" | "REVIEW_REQUIRED", StatusTone> = {
-  TRACEABLE: "ready",
-  BLOCKED: "blocked",
-  REVIEW_REQUIRED: "review_required",
-};
+const ALL_COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", 
+  "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", 
+  "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", 
+  "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", 
+  "Comoros", "Congo", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", 
+  "Djibouti", "Dominica", "Dominican Republic", "East Timor", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", 
+  "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", 
+  "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", 
+  "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", 
+  "Kazakhstan", "Kenya", "Kiribati", "North Korea", "South Korea", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", 
+  "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", 
+  "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", 
+  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", 
+  "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan", 
+  "Palau", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", 
+  "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", 
+  "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", 
+  "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", 
+  "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", "Tonga", "Trinidad and Tobago", 
+  "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", 
+  "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+];
 
 const ISSUE_SEVERITY_MAP: Record<"WARNING" | "HIGH" | "CRITICAL", RiskTone> = {
   WARNING: "medium",
@@ -136,6 +149,7 @@ export default function ConsignmentsPage() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isCompliancePackOpen, setIsCompliancePackOpen] = useState(false);
 
   // Product Line sub-actions state
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -727,7 +741,7 @@ export default function ConsignmentsPage() {
 
     return (
       <div className="space-y-6">
-        {/* Compact Metadata Card (2 rows on medium/large screens) */}
+        {/* Compact Metadata Card (1 row on medium/large screens) */}
         <Card variant="inset" className="p-4 bg-gradient-to-b from-bg-surface to-bg-surface-alt border-border-soft/60">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
             {/* Destination */}
@@ -736,40 +750,10 @@ export default function ConsignmentsPage() {
               <p className="text-sm font-semibold text-text-primary truncate">{c.destination}</p>
             </div>
 
-            {/* Traceability */}
-            <div className="space-y-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Traceability</p>
-              <div>
-                <StatusBadge status={TRACE_STATUS_MAP[c.traceabilityStatus]}>
-                  {formatLabel(c.traceabilityStatus)}
-                </StatusBadge>
-              </div>
-            </div>
-
             {/* Operator Agent */}
             <div className="space-y-1 min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Operator Agent</p>
               <p className="text-sm font-semibold text-text-primary truncate">{assignedAgent?.name || "—"}</p>
-            </div>
-
-            {/* Output Eligibility */}
-            <div className="space-y-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Output Eligibility</p>
-              <div>
-                <StatusBadge status={ELIGIBILITY_STATUS_MAP[c.outputEligibility]}>
-                  {formatLabel(c.outputEligibility)}
-                </StatusBadge>
-              </div>
-            </div>
-
-            {/* Agent Readiness */}
-            <div className="space-y-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Agent Readiness</p>
-              <div>
-                <StatusBadge status={assignedAgent?.readiness === "READY" ? "ready" : "review_required"}>
-                  {formatLabel(assignedAgent?.readiness ?? "")}
-                </StatusBadge>
-              </div>
             </div>
 
             {/* Package Snapshot */}
@@ -823,17 +807,17 @@ export default function ConsignmentsPage() {
 
               {/* Product Lines Table */}
               <div className="overflow-x-auto rounded-xl border border-border-soft">
-                <table className="w-full text-sm border-collapse">
+                <table className="w-full text-sm border-collapse min-w-[1100px]">
                   <thead>
                     <tr className="bg-brand-primary text-text-inverse">
                       <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider">Sr</th>
                       <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider">Code</th>
                       <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider">Product / Packing</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider">Section</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap min-w-[90px]">Section</th>
                       <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider">Total Ctns</th>
                       <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider">Dips Ctns</th>
                       <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider">Lot #</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider">Mfg / Exp</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap min-w-[100px]">Mfg / Exp</th>
                       <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider">Gross Wt (kg)</th>
                       <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider">Total Gross (kg)</th>
                       <th className="px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider">Actions</th>
@@ -856,8 +840,8 @@ export default function ConsignmentsPage() {
                           <p className="font-semibold text-text-primary leading-tight">{line.productName}</p>
                           <p className="text-[11px] text-text-secondary mt-0.5">{line.packingDesc}</p>
                         </td>
-                        <td className="px-3 py-2.5">
-                          <span className="inline-block rounded-full bg-bg-page border border-border-soft px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span className="inline-block rounded-full bg-bg-page border border-border-soft px-2 py-0.5 text-[11px] font-medium text-text-secondary whitespace-nowrap">
                             {line.section}
                           </span>
                         </td>
@@ -866,7 +850,7 @@ export default function ConsignmentsPage() {
                         <td className="px-3 py-2.5">
                           <LotBadge lot={line.lotNo} />
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           <p className="text-[11px] font-mono text-text-primary">{line.mfgDate}</p>
                           <p className="text-[11px] font-mono text-text-secondary">{line.expDate}</p>
                         </td>
@@ -1285,9 +1269,19 @@ export default function ConsignmentsPage() {
                     </p>
                   )}
                 </div>
-                <Button size="sm" variant="secondary" onClick={handleOpenEdit} disabled={gateCheckActive}>
-                  Edit
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    icon={<FileCheck2 className="h-4 w-4" />}
+                    onClick={() => setIsCompliancePackOpen(true)}
+                    disabled={gateCheckActive}
+                  >
+                    Export EUDR Compliance Data Pack
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={handleOpenEdit} disabled={gateCheckActive}>
+                    Edit
+                  </Button>
+                </div>
               </div>
             </Card>
 
@@ -1390,43 +1384,7 @@ export default function ConsignmentsPage() {
                     </Select>
                   </label>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <label className="space-y-2 text-sm">
-                    <span className="text-text-secondary">Gate Compliance Status</span>
-                    <Select
-                      value={formGateStatus}
-                      onChange={(event) => setFormGateStatus(event.target.value as "READY" | "BLOCKED" | "REVIEW_REQUIRED")}
-                    >
-                      <option value="READY">READY</option>
-                      <option value="REVIEW_REQUIRED">REVIEW REQUIRED</option>
-                      <option value="BLOCKED">BLOCKED</option>
-                    </Select>
-                  </label>
-                  <label className="space-y-2 text-sm">
-                    <span className="text-text-secondary">TRACES Package Posture</span>
-                    <Select
-                      value={formEligibility}
-                      onChange={(event) => setFormEligibility(event.target.value as "PACKAGE_READY" | "HELD" | "SCOPE_REVIEW")}
-                    >
-                      <option value="PACKAGE_READY">PACKAGE READY</option>
-                      <option value="HELD">HELD</option>
-                      <option value="SCOPE_REVIEW">SCOPE REVIEW</option>
-                    </Select>
-                  </label>
-                  <label className="space-y-2 text-sm">
-                    <span className="text-text-secondary">Traceability Posture</span>
-                    <Select
-                      value={formTraceStatus}
-                      onChange={(event) =>
-                        setFormTraceStatus(event.target.value as "TRACEABLE" | "BLOCKED" | "REVIEW_REQUIRED")
-                      }
-                    >
-                      <option value="TRACEABLE">TRACEABLE</option>
-                      <option value="REVIEW_REQUIRED">REVIEW REQUIRED</option>
-                      <option value="BLOCKED">BLOCKED</option>
-                    </Select>
-                  </label>
-                </div>
+
               </div>
 
               {/* ── Dispatch Header ───────────────────────────────────── */}
@@ -1455,7 +1413,18 @@ export default function ConsignmentsPage() {
                   </label>
                   <label className="space-y-2 text-sm">
                     <span className="text-text-secondary">Destination Country</span>
-                    <Input value={formCountry} onChange={(e) => setFormCountry(e.target.value)} />
+                    <Input
+                      type="text"
+                      list="destinations-datalist"
+                      value={formCountry}
+                      onChange={(e) => setFormCountry(e.target.value)}
+                      placeholder="Select or type country..."
+                    />
+                    <datalist id="destinations-datalist">
+                      {ALL_COUNTRIES.map((country) => (
+                        <option key={country} value={country} />
+                      ))}
+                    </datalist>
                   </label>
                 </div>
               </div>
@@ -1767,6 +1736,14 @@ export default function ConsignmentsPage() {
             </form>
           </Card>
         </div>
+      )}
+
+      {selectedConsignment && (
+        <EudrComplianceDataPackModal
+          open={isCompliancePackOpen}
+          onClose={() => setIsCompliancePackOpen(false)}
+          consignment={selectedConsignment}
+        />
       )}
     </div>
   );

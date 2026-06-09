@@ -317,6 +317,9 @@ export interface DocumentRecord {
   note: string;
   issuedAt?: string;
   expiresAt?: string;
+  uploadedAt?: string;
+  uploadedBy?: string;
+  fileType?: string;
 }
 
 export interface ConcernRecord {
@@ -3757,6 +3760,28 @@ const supplementalComplianceDocuments: DocumentRecord[] = supplementalCompliance
       note: "Supplemental dashboard evidence record used for document coverage analytics.",
       issuedAt: "2026-05-01",
       expiresAt: batch.expiries[index % batch.expiries.length],
+      uploadedAt: "2026-05-01",
+      uploadedBy: "System",
+      fileType:
+        batch.role === "SUPPLIER_AGREEMENT"
+          ? "pdf"
+          : batch.role === "SUPPLIER_DECLARATION"
+          ? "docx"
+          : batch.role === "PRODUCT_SPECIFICATION"
+          ? "xlsx"
+          : batch.role === "CHAIN_OF_CUSTODY_PROOF"
+          ? "csv"
+          : batch.role === "GEOLOCATION_SHAPEFILE"
+          ? "geojson"
+          : batch.role === "LEGAL_LICENSE"
+          ? "pdf"
+          : batch.role === "AUDIT_SUMMARY"
+          ? "pdf"
+          : batch.role === "POLICY_PROCEDURE"
+          ? "pdf"
+          : batch.role === "DUE_DILIGENCE_REPORT"
+          ? "pdf"
+          : "pdf",
     };
   }),
 );
@@ -3771,6 +3796,9 @@ export const documents: DocumentRecord[] = [
     note: "Valid until January 2028 but covers both SG and MB; transaction-specific proof still needed.",
     issuedAt: "2026-01-12",
     expiresAt: "2028-01-12",
+    uploadedAt: "2026-01-12",
+    uploadedBy: "System",
+    fileType: "pdf",
   },
   {
     id: "doc-cargill-msds",
@@ -3781,6 +3809,9 @@ export const documents: DocumentRecord[] = [
     note: "Only current source showing RSPO SG for the specific palm product.",
     issuedAt: "2026-04-18",
     expiresAt: "2026-07-30",
+    uploadedAt: "2026-04-18",
+    uploadedBy: "System",
+    fileType: "pdf",
   },
   {
     id: "doc-jb-request",
@@ -3791,6 +3822,9 @@ export const documents: DocumentRecord[] = [
     note: "Outstanding; waiting for formal response pack.",
     issuedAt: "2026-05-15",
     expiresAt: "2026-07-15",
+    uploadedAt: "2026-05-15",
+    uploadedBy: "System",
+    fileType: "docx",
   },
   {
     id: "doc-indococoa-request",
@@ -3801,6 +3835,9 @@ export const documents: DocumentRecord[] = [
     note: "Initial outreach opened after on-site discovery of Indococoa supplied via N A Enterprises.",
     issuedAt: "2026-05-20",
     expiresAt: "2026-07-20",
+    uploadedAt: "2026-05-20",
+    uploadedBy: "System",
+    fileType: "docx",
   },
   {
     id: "doc-chew-scope-note",
@@ -3811,6 +3848,9 @@ export const documents: DocumentRecord[] = [
     note: "Awaiting customs classification confirmation for palm route.",
     issuedAt: "2026-05-22",
     expiresAt: "2026-08-15",
+    uploadedAt: "2026-05-22",
+    uploadedBy: "System",
+    fileType: "docx",
   },
   {
     id: "doc-bubblegum-scope",
@@ -3821,6 +3861,9 @@ export const documents: DocumentRecord[] = [
     note: "Used in the compliance package instead of commodity provenance evidence.",
     issuedAt: "2026-05-22",
     expiresAt: "2027-05-22",
+    uploadedAt: "2026-05-22",
+    uploadedBy: "System",
+    fileType: "pdf",
   },
   ...supplementalComplianceDocuments,
 ];

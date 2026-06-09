@@ -32,6 +32,7 @@ import {
   Textarea,
   ValidationSummary,
 } from "@/components/ui";
+import { FileText, File, Image, MapPin, Eye, Edit2, Trash2 } from "lucide-react";
 import type { StatusTone } from "@/lib/ui-semantics";
 
 const documentFormSchema = documentSchema.extend({
@@ -67,7 +68,7 @@ function formatLabel(value: string) {
 }
 
 export default function DocumentsEvidencePage() {
-  const { documents, addDocument, editDocument, suppliers, products, scenarioId } = useSession();
+  const { documents, addDocument, editDocument, deleteDocument, suppliers, products, scenarioId } = useSession();
 
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -121,26 +122,84 @@ export default function DocumentsEvidencePage() {
     });
   };
 
+  function renderFileTypeChip(doc: typeof documents[0]) {
+    const extSource = (doc.fileType || doc.title.split('.').pop() || '').toLowerCase();
+    const ext = extSource.replace(/^\./, "");
+    let label = ext ? ext.toUpperCase() : 'FILE';
+    let Icon = File;
+
+    if (ext.includes('pdf')) {
+      Icon = FileText;
+      label = 'PDF';
+    } else if (ext.includes('doc') || ext.includes('rtf')) {
+      Icon = FileText;
+      label = 'DOC';
+    } else if (ext === 'xls' || ext === 'xlsx') {
+      Icon = FileText;
+      label = 'EXCEL';
+    } else if (ext === 'csv') {
+      Icon = FileText;
+      label = 'CSV';
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].some((i) => ext.includes(i))) {
+      Icon = Image;
+      label = ext.toUpperCase();
+    } else if (['geojson', 'kml', 'shp'].some((i) => ext.includes(i))) {
+      Icon = MapPin;
+      label = ext.toUpperCase();
+    }
+
+    return (
+      <Tag tone="neutral" className="inline-flex items-center gap-2 px-3 py-1 text-sm">
+        <Icon className="h-4 w-4 text-text-secondary" />
+        <span className="font-semibold text-[13px] text-text-primary">{label}</span>
+      </Tag>
+    );
+  }
+
   const closeModal = () => {
     setIsAddModalOpen(false);
     setIsEditModalOpen(false);
     resetForm();
   };
 
-  const handleOpenEdit = () => {
-    if (!selectedDocument) return;
-    setEditingId(selectedDocument.id);
-    form.setValue("title", selectedDocument.title);
-    if (STANDARD_ROLES.includes(selectedDocument.documentRole as (typeof STANDARD_ROLES)[number])) {
-      setRoleType(selectedDocument.documentRole);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [viewDocument, setViewDocument] = useState<typeof documents[0] | null>(null);
+
+  const handleView = (doc: typeof documents[0]) => {
+    setViewDocument(doc);
+    setIsViewOpen(true);
+  };
+
+  function renderPreview(doc: typeof documents[0]) {
+    const previewSrc = "@file:test.pdf"; // dummy PDF for now
+    const raw = (doc.fileType || doc.title.split('.').pop() || '').toLowerCase();
+    if (raw.includes('pdf') || true) {
+      return (
+        <div className="w-full h-[640px] bg-white shadow-inner rounded">
+          <object data={previewSrc} type="application/pdf" width="100%" height="100%">
+            <p className="p-6 text-sm text-text-secondary">Preview not available. <a href={previewSrc} className="text-brand-primary underline">Download</a></p>
+          </object>
+        </div>
+      );
+    }
+  }
+
+  const handleOpenEdit = (docParam?: typeof documents[0]) => {
+    const doc = docParam ?? selectedDocument;
+    if (!doc) return;
+    setSelectedDocumentId(doc.id);
+    setEditingId(doc.id);
+    form.setValue("title", doc.title);
+    if (STANDARD_ROLES.includes(doc.documentRole as (typeof STANDARD_ROLES)[number])) {
+      setRoleType(doc.documentRole);
       form.setValue("roleText", "");
     } else {
       setRoleType("CUSTOM");
-      form.setValue("roleText", selectedDocument.documentRole);
+      form.setValue("roleText", doc.documentRole);
     }
 
-    const matchedSupplier = suppliers.find((item) => item.name === selectedDocument.linkedEntity);
-    const matchedProduct = products.find((item) => item.name === selectedDocument.linkedEntity);
+    const matchedSupplier = suppliers.find((item) => item.name === doc.linkedEntity);
+    const matchedProduct = products.find((item) => item.name === doc.linkedEntity);
     if (matchedSupplier) {
       setLinkedEntityType(matchedSupplier.name);
       form.setValue("linkedEntity", matchedSupplier.name);
@@ -149,11 +208,11 @@ export default function DocumentsEvidencePage() {
       form.setValue("linkedEntity", matchedProduct.name);
     } else {
       setLinkedEntityType("CUSTOM");
-      form.setValue("linkedEntity", selectedDocument.linkedEntity);
+      form.setValue("linkedEntity", doc.linkedEntity);
     }
 
-    form.setValue("status", selectedDocument.status);
-    form.setValue("note", selectedDocument.note);
+    form.setValue("status", doc.status);
+    form.setValue("note", doc.note);
     setIsEditModalOpen(true);
   };
 
@@ -201,8 +260,8 @@ export default function DocumentsEvidencePage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1.8fr]">
-        <Card className="space-y-4 p-4 sm:p-5">
+      <div className="grid gap-6">
+        <Card className="space-y-4 p-4 sm:p-5 w-full">
           <SectionHeader
             title="Evidence Records List"
             actions={
@@ -227,43 +286,78 @@ export default function DocumentsEvidencePage() {
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableHeaderCell density="compact">Document</TableHeaderCell>
-                    <TableHeaderCell density="compact">Status</TableHeaderCell>
-                    <TableHeaderCell density="compact">Action</TableHeaderCell>
+                    <TableHeaderCell>Document</TableHeaderCell>
+                    <TableHeaderCell>Supplier</TableHeaderCell>
+                    <TableHeaderCell>Role</TableHeaderCell>
+                    <TableHeaderCell>File Type</TableHeaderCell>
+                    <TableHeaderCell>Uploaded By</TableHeaderCell>
+                    <TableHeaderCell>Uploaded</TableHeaderCell>
+                    <TableHeaderCell>Status</TableHeaderCell>
+                    <TableHeaderCell>Actions</TableHeaderCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {documents.map((document) => {
-                    const selected = selectedDocument?.id === document.id;
+                    const matchedSupplier = suppliers.find((s) => s.name === document.linkedEntity);
                     return (
-                      <TableRow
-                        key={document.id}
-                        selected={selected}
-                        className="cursor-pointer"
-                        onClick={() => setSelectedDocumentId(document.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setSelectedDocumentId(document.id);
-                          }
-                        }}
-                        tabIndex={0}
-                        role="button"
-                        aria-label={`Select document ${document.title}`}
-                      >
-                        <TableCell density="compact">
+                      <TableRow key={document.id} className="">
+                        <TableCell>
                           <p className="font-semibold text-brand-primary">{document.title}</p>
                           <p className="text-xs text-text-secondary">{formatLabel(document.documentRole)}</p>
                         </TableCell>
-                        <TableCell density="compact">
+                        <TableCell>{matchedSupplier ? `${matchedSupplier.name}` : document.linkedEntity}</TableCell>
+                        <TableCell>
+                          <p className="text-sm font-medium">{formatLabel(document.documentRole)}</p>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          {renderFileTypeChip(document)}
+                        </TableCell>
+                        <TableCell className="text-sm text-text-secondary">{document.uploadedBy ?? 'System'}</TableCell>
+                        <TableCell className="text-sm text-text-secondary">{(document.uploadedAt ?? document.issuedAt) ? new Date((document.uploadedAt ?? document.issuedAt) as string).toLocaleDateString() : '—'}</TableCell>
+                        <TableCell>
                           <StatusBadge status={DOCUMENT_STATUS_MAP[document.status]}>
                             {formatLabel(document.status)}
                           </StatusBadge>
                         </TableCell>
-                        <TableCell density="compact">
-                          <Button size="sm" variant={selected ? "primary" : "secondary"}>
-                            Inspect
-                          </Button>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="tertiary"
+                              className="h-9 w-9 p-2 rounded-full text-brand-primary hover:bg-brand-primary/10"
+                              onClick={() => handleView(document)}
+                              title={`View ${document.title}`}
+                              aria-label={`View ${document.title}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-9 w-9 p-2 rounded-full text-text-primary hover:bg-surface-100"
+                              onClick={() => { setSelectedDocumentId(document.id); handleOpenEdit(document); }}
+                              title={`Edit ${document.title}`}
+                              aria-label={`Edit ${document.title}`}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              className="h-9 w-9 p-2 rounded-full"
+                              onClick={() => {
+                                if (!confirm(`Delete document "${document.title}"? This cannot be undone.`)) return;
+                                deleteDocument(document.id);
+                                if (selectedDocumentId === document.id) setSelectedDocumentId("");
+                              }}
+                              title={`Delete ${document.title}`}
+                              aria-label={`Delete ${document.title}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -274,66 +368,26 @@ export default function DocumentsEvidencePage() {
           )}
         </Card>
 
-        {selectedDocument ? (
-          <Card className="space-y-5 p-4 sm:p-5">
-            <SectionHeader
-              title={selectedDocument.title}
-              description="Document details"
-              actions={
-                <Button size="sm" variant="secondary" onClick={handleOpenEdit}>
-                  Edit
-                </Button>
-              }
-            />
+        {isViewOpen && viewDocument ? (
+          <ModalShell open={isViewOpen} onClose={() => { setIsViewOpen(false); setViewDocument(null); }} size="xl">
+            <ModalHeader title={viewDocument.title} description={formatLabel(viewDocument.documentRole)} onClose={() => { setIsViewOpen(false); setViewDocument(null); }} />
+            <ModalBody>
+              <div className="space-y-4">
+                {renderPreview(viewDocument)}
+              </div>
+            </ModalBody>
+            <ModalFooter>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="secondary" onClick={() => { setIsViewOpen(false); setViewDocument(null); }}>Close</Button>
+                <a href="@file:test.pdf" target="_blank" rel="noreferrer" className="inline-block">
+                  <Button size="sm">Open in new tab</Button>
+                </a>
+              </div>
+            </ModalFooter>
+          </ModalShell>
+        ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Card variant="inset" className="p-3">
-                <p className="text-xs uppercase tracking-wide text-text-secondary">Document Role</p>
-                <p className="mt-1 text-sm font-semibold text-text-primary">
-                  {formatLabel(selectedDocument.documentRole)}
-                </p>
-              </Card>
-              <Card variant="inset" className="p-3">
-                <p className="text-xs uppercase tracking-wide text-text-secondary">Linked Entity</p>
-                <p className="mt-1 text-sm font-semibold text-text-primary">{selectedDocument.linkedEntity}</p>
-              </Card>
-              <Card variant="inset" className="p-3">
-                <p className="text-xs uppercase tracking-wide text-text-secondary">Lifecycle State</p>
-                <div className="mt-1">
-                  <StatusBadge status={DOCUMENT_STATUS_MAP[selectedDocument.status]}>
-                    {formatLabel(selectedDocument.status)}
-                  </StatusBadge>
-                </div>
-              </Card>
-            </div>
-
-            <Card variant="inset" className="p-4">
-              <p className="text-sm font-semibold text-brand-primary">Compliance Officer Note</p>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">{selectedDocument.note}</p>
-            </Card>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Card variant="inset" className="p-3">
-                <p className="text-sm font-semibold text-brand-primary">Retention Posture</p>
-                <p className="mt-2 text-xs leading-6 text-text-secondary">
-                  EUDR Article 9 requires keeping compliance packages and evidence links archived for at least 5 years
-                  post-market placement.
-                </p>
-              </Card>
-              <Card variant="inset" className="p-3">
-                <p className="text-sm font-semibold text-brand-primary">Downstream Use</p>
-                <p className="mt-2 text-xs leading-6 text-text-secondary">
-                  Verified evidence records are bundled dynamically when compiling exporter compliance packages for
-                  customs agent submission.
-                </p>
-              </Card>
-            </div>
-          </Card>
-        ) : (
-          <Card className="p-10 text-center text-sm text-text-secondary">
-            Select an evidence record from the left to view details.
-          </Card>
-        )}
+        {/* Right detail panel removed — all details rendered inline within table rows */}
       </div>
 
       {(isAddModalOpen || isEditModalOpen) && (

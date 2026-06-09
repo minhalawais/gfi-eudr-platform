@@ -84,7 +84,7 @@ export function getApplicabilityCopy(ingredient: IngredientRecord) {
     return `This ingredient maps to the EUDR ${ingredient.commodity} commodity family. Full legality, geolocation, deforestation, and DDS evidence should remain active.`;
   }
   if (ingredient.relevance === "UNDER_REVIEW") {
-    return `This ingredient has a possible ${ingredient.commodity === "NONE" ? "EUDR" : ingredient.commodity} signal, but the HS path still requires compliance review before operator treatment is finalized.`;
+    return "";
   }
   return "This ingredient does not currently map to an EUDR Annex I commodity. Preserve classification evidence, but enhanced geolocation and DDS filing steps are not required unless scope changes.";
 }

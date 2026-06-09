@@ -97,6 +97,10 @@ export function IngredientComplianceDrawer({
     legalityDossiers,
     addOrEditLegalityDossier,
     verifyLegalityEvidenceDocument,
+    addEudrEvidenceAttachment,
+    editEudrEvidenceAttachment,
+    deleteEudrEvidenceAttachment,
+    suppliers,
     updateIngredientComplianceState,
   } = useSession();
 
@@ -657,23 +661,80 @@ export function IngredientComplianceDrawer({
               </Card>
               <Card className="space-y-3 p-4">
                 <h3 className="text-sm font-bold text-brand-primary">Evidence attachments</h3>
+                <div className="flex items-center justify-between">
+                  <div />
+                  <div className="flex gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold" title="Add evidence file">
+                      <UploadCloud className="h-4 w-4" /> Add evidence
+                      <input type="file" className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || ingredientNodes.length === 0) return;
+                        const nodeId = ingredientNodes[0].id;
+                        const record: EudrEvidenceAttachment = {
+                          id: `evid-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+                          requestId: `req-${nodeId}-${Date.now()}`,
+                          nodeId,
+                          sectionRef: "UPLOADED",
+                          documentRole: "UPSTREAM_TRADE_PROOF",
+                          fileName: file.name,
+                          status: "ATTACHED",
+                        };
+                        addEudrEvidenceAttachment(record);
+                        triggerToast(`Added evidence ${file.name}`);
+                      }} />
+                    </label>
+                  </div>
+                </div>
                 {attachmentRows.length === 0 ? (
                   <div className="flex items-start gap-2 rounded-md border border-state-warning/40 bg-state-warning/10 p-3 text-sm text-state-warning">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                     No evidence files are linked to this ingredient path yet.
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {attachmentRows.map((attachment) => (
-                      <Card key={attachment.id} variant="inset" className="flex items-center justify-between gap-3 p-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-brand-primary">{attachment.fileName}</p>
-                          <p className="text-xs text-text-secondary">Section: {attachment.sectionRef}</p>
-                        </div>
-                        <StatusBadge status={toStatusTone(attachment.status)}>{humanize(attachment.status)}</StatusBadge>
-                      </Card>
-                    ))}
-                  </div>
+                  <TableRoot>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableHeaderCell>File</TableHeaderCell>
+                          <TableHeaderCell>Supplier</TableHeaderCell>
+                          <TableHeaderCell>Role</TableHeaderCell>
+                          <TableHeaderCell>Section</TableHeaderCell>
+                          <TableHeaderCell>Status</TableHeaderCell>
+                          <TableHeaderCell>Actions</TableHeaderCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {attachmentRows.map((attachment) => {
+                          const supplier = supplyChainNodes.find((n) => n.id === attachment.nodeId)
+                          const supplierName = suppliers.find(s => s.id === supplier?.supplierId)?.name ?? supplier?.entityName ?? "Unknown"
+                          return (
+                            <TableRow key={attachment.id}>
+                              <TableCell>
+                                <div className="text-sm font-semibold text-text-primary">{attachment.fileName}</div>
+                              </TableCell>
+                              <TableCell>{supplierName}</TableCell>
+                              <TableCell>{humanize(attachment.documentRole)}</TableCell>
+                              <TableCell>{attachment.sectionRef}</TableCell>
+                              <TableCell><StatusBadge status={toStatusTone(attachment.status)}>{humanize(attachment.status)}</StatusBadge></TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <button title="Edit" className="rounded-md border px-2 py-1 text-xs" onClick={() => {
+                                    const updated = { ...attachment, fileName: `${attachment.fileName} (edited)` };
+                                    editEudrEvidenceAttachment(updated);
+                                    triggerToast(`Edited ${attachment.fileName}`);
+                                  }}>✏️</button>
+                                  <button title="Delete" className="rounded-md border px-2 py-1 text-xs" onClick={() => {
+                                    deleteEudrEvidenceAttachment(attachment.id);
+                                    triggerToast(`Deleted ${attachment.fileName}`);
+                                  }}>🗑️</button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableRoot>
                 )}
               </Card>
             </section>

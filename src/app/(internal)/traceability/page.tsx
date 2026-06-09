@@ -55,7 +55,7 @@ function TraceabilityPageContent() {
   );
 
   useEffect(() => {
-    const queryMode = searchParams.get("mode");
+    const queryMode = searchParams?.get("mode");
     if (queryMode === "onsite") {
       setActiveSubview("ONSITE");
       return;
@@ -69,9 +69,9 @@ function TraceabilityPageContent() {
         return;
       }
 
-      const productId = searchParams.get("productId");
-      const ingredientId = searchParams.get("ingredientId");
-      const supplierId = searchParams.get("supplierId");
+      const productId = searchParams?.get("productId");
+      const ingredientId = searchParams?.get("ingredientId");
+      const supplierId = searchParams?.get("supplierId");
       const requestedRoot = ingredientViewModel.roots.find(
         (root) => root.productId === productId && root.ingredientId === ingredientId && root.supplierId === supplierId,
       );

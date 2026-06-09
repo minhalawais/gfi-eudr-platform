@@ -1127,8 +1127,8 @@ function SupplierPortalContent({
     propagateChainCompletion,
   } = useSession();
   const searchParams = useSearchParams();
-  const embeddedMode = searchParams.get("embed") === "1";
-  const token = tokenOverride?.trim() ?? searchParams.get("token")?.trim() ?? "";
+  const embeddedMode = searchParams?.get("embed") === "1";
+  const token = tokenOverride?.trim() ?? searchParams?.get("token")?.trim() ?? "";
   const isInternalMode = mode === "internal" || embeddedMode;
 
   // Track which upstream entities already have generated form links (entityId -> tokenLabel)
@@ -1163,7 +1163,7 @@ function SupplierPortalContent({
   }, [scopedRequests, selectedRequestId]);
 
   useEffect(() => {
-    const lang = isInternalMode ? null : searchParams.get("lang");
+    const lang = isInternalMode ? null : searchParams?.get("lang");
     const storedLocale = typeof window !== "undefined" ? window.localStorage.getItem("gfi.portal.locale") : null;
     const resolved = ([lang, storedLocale].find((value): value is string => !!value && SUPPORTED_LOCALES.includes(value as SupportedLocale)) ??
       "en") as SupportedLocale;

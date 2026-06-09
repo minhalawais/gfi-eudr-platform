@@ -179,6 +179,7 @@ interface AuthContextType {
   editAgent: (record: AgentProfile) => void
   addDocument: (record: DocumentRecord) => void
   editDocument: (record: DocumentRecord) => void
+  deleteDocument: (id: string) => void
   addConcern: (record: ConcernRecord) => void
   editConcern: (record: ConcernRecord) => void
   addReceipt: (record: ERPReceipt) => void
@@ -191,6 +192,8 @@ interface AuthContextType {
   addIntermediaryDeclarationSubmission: (record: IntermediaryDeclarationSubmission) => void
   addFarmerDeclarationSubmission: (record: FarmerDeclarationSubmission) => void
   addEudrEvidenceAttachment: (record: EudrEvidenceAttachment) => void
+  editEudrEvidenceAttachment: (record: EudrEvidenceAttachment) => void
+  deleteEudrEvidenceAttachment: (id: string) => void
   editPlot: (record: PlotRecord) => void
   editDeforestationCase: (record: DeforestationCase) => void
   addOrEditDdsSubmission: (record: DdsSubmissionRecord) => void
@@ -277,6 +280,7 @@ const AuthContext = createContext<AuthContextType>({
   editAgent: () => {},
   addDocument: () => {},
   editDocument: () => {},
+  deleteDocument: () => {},
   addConcern: () => {},
   editConcern: () => {},
   addReceipt: () => {},
@@ -289,6 +293,8 @@ const AuthContext = createContext<AuthContextType>({
   addIntermediaryDeclarationSubmission: () => {},
   addFarmerDeclarationSubmission: () => {},
   addEudrEvidenceAttachment: () => {},
+  editEudrEvidenceAttachment: () => {},
+  deleteEudrEvidenceAttachment: () => {},
   editPlot: () => {},
   editDeforestationCase: () => {},
   addOrEditDdsSubmission: () => {},
@@ -643,6 +649,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCustomDocuments(next)
     localStorage.setItem(`gfi_custom_documents_${scenarioId}`, JSON.stringify(next))
   }
+  const deleteDocument = (id: string) => {
+    const next = customDocuments.filter(r => r.id !== id)
+    setCustomDocuments(next)
+    localStorage.setItem(`gfi_custom_documents_${scenarioId}`, JSON.stringify(next))
+  }
 
   const addConcern = (record: ConcernRecord) => {
     const next = [...customConcerns, record]
@@ -742,6 +753,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
   const addEudrEvidenceAttachment = (record: EudrEvidenceAttachment) => {
     persistEudrEvidenceAttachments([...customEudrEvidenceAttachments, record])
+  }
+
+  const editEudrEvidenceAttachment = (record: EudrEvidenceAttachment) => {
+    const idx = customEudrEvidenceAttachments.findIndex(r => r.id === record.id)
+    const next = idx >= 0 ? customEudrEvidenceAttachments.map(r => r.id === record.id ? record : r) : [...customEudrEvidenceAttachments, record]
+    persistEudrEvidenceAttachments(next)
+  }
+
+  const deleteEudrEvidenceAttachment = (id: string) => {
+    const next = customEudrEvidenceAttachments.filter(r => r.id !== id)
+    persistEudrEvidenceAttachments(next)
   }
 
   const addOrEditDdsSubmission = (record: DdsSubmissionRecord) => {
@@ -1002,6 +1024,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       editAgent,
       addDocument,
       editDocument,
+      deleteDocument,
       addConcern,
       editConcern,
       addReceipt,
@@ -1014,6 +1037,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       addIntermediaryDeclarationSubmission,
       addFarmerDeclarationSubmission,
       addEudrEvidenceAttachment,
+      editEudrEvidenceAttachment,
+      deleteEudrEvidenceAttachment,
       editPlot,
       editDeforestationCase,
       addOrEditDdsSubmission,

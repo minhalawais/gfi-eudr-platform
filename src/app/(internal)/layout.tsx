@@ -52,9 +52,8 @@ export default function InternalLayout({
     { name: 'EUDR Compliance', path: '/eudr-compliance', icon: ShieldCheck },
     { name: 'Documents', path: '/documents', icon: FileText },
     { name: 'EU Agents', path: '/agents', icon: UserCheck },
-    { name: 'Outputs', path: '/outputs', icon: PackageCheck },
     { name: 'Integration', path: '/integration', icon: Plug },
-    { name: 'Concerns', path: '/upstream', icon: MessageSquareWarning },
+    
   ]
 
   useEffect(() => {
@@ -83,7 +82,7 @@ export default function InternalLayout({
 
   useEffect(() => {
     const activeNav = navigationItems.find(
-      (item) => pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path))
+      (item) => pathname === item.path || (item.path !== '/dashboard' && pathname?.startsWith(item.path))
     );
     const titleSuffix = "GFI Compliance Control Center";
     if (pathname === '/profile') {
@@ -110,7 +109,7 @@ export default function InternalLayout({
     setIsSidebarCollapsed((prev) => !prev)
   }
 
-  const activeNav = navigationItems.find((item) => pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path)))
+  const activeNav = navigationItems.find((item) => pathname === item.path || (item.path !== '/dashboard' && pathname?.startsWith(item.path)))
   const breadcrumbs = pathname === '/profile' ? ['Profile'] : activeNav ? [activeNav.name] : []
 
   const handleLogout = () => {
@@ -172,7 +171,7 @@ export default function InternalLayout({
 
         <nav className="flex flex-1 flex-col gap-1.5">
           {navigationItems.map((item) => {
-            const isActive = pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path))
+            const isActive = pathname === item.path || (item.path !== '/dashboard' && pathname?.startsWith(item.path))
             const Icon = item.icon
             return (
               <Link

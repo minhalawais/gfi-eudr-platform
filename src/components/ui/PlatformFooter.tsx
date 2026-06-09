@@ -9,7 +9,7 @@ const FOS_WEBSITE = "https://fruitofsustainability.com/";
 export function PlatformFooter() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const isEmbeddedSupplierPortal = pathname === "/supplier" && searchParams.get("embed") === "1";
+  const isEmbeddedSupplierPortal = pathname === "/supplier" && searchParams?.get("embed") === "1";
   const isInternalRoute = pathname !== "/supplier" && pathname !== "/agent";
 
   if (pathname === "/" || isEmbeddedSupplierPortal) {
