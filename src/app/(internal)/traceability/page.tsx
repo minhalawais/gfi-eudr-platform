@@ -115,7 +115,7 @@ function TraceabilityPageContent() {
     <div className="flex w-full flex-col gap-6">
       <SectionHeader
         title="Supply Chain Tracebility"
-        description="Track upstream provenance and GFI on-site material movement from receipt through production and consignment release."
+        description="Track upstream provenance and compliance posture of raw materials and ingredients throughout the supply chain."
       />
 
       {activeSubview === "UPSTREAM" ? (

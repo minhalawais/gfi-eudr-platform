@@ -184,11 +184,6 @@ export default function DocumentsEvidencePage() {
       <SectionHeader
         title="Documents and Evidence"
         description="Manage declarations, certificates, audit records, and scope support documents."
-        actions={
-          <Tag tone="brand">
-            Scenario: <span className="ml-1 font-semibold">{formatLabel(scenarioId)}</span>
-          </Tag>
-        }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -371,48 +366,48 @@ export default function DocumentsEvidencePage() {
                 <FormGrid>
                   <FormField label="Document Role / Classification">
                     <Select value={roleType} onChange={(event) => setRoleType(event.target.value)}>
-                    <option value="SUPPLIER_DECLARATION">Supplier Compliance Declaration</option>
-                    <option value="INTERMEDIARY_DECLARATION">Intermediary Actor Declaration</option>
-                    <option value="FARMER_DECLARATION">Farmer / Producer Declaration</option>
-                    <option value="UPSTREAM_TRADE_PROOF">Upstream Trade Proof</option>
-                    <option value="LAND_RIGHTS_EVIDENCE">Land Rights Evidence</option>
-                    <option value="GEOLOCATION_FILE">Geolocation File</option>
-                    <option value="SUSTAINABILITY_CERTIFICATE">Sustainability Certificate</option>
-                    <option value="LEGAL_LICENSE">Legal / Operational License</option>
-                    <option value="LABOUR_RIGHTS_EVIDENCE">Labour Rights Evidence</option>
-                    <option value="DEFORESTATION_AUDIT">Deforestation Sat-Map Report</option>
-                    <option value="CHAIN_OF_CUSTODY_PROOF">Chain of Custody Validation Proof</option>
-                    <option value="AUDIT_SUMMARY">ESG Audit Summary</option>
-                    <option value="GEOLOCATION_SHAPEFILE">Geolocation Polygon Shapefile</option>
-                    <option value="CUSTOM">Other / Custom Role</option>
-                  </Select>
+                      <option value="SUPPLIER_DECLARATION">Supplier Compliance Declaration</option>
+                      <option value="INTERMEDIARY_DECLARATION">Intermediary Actor Declaration</option>
+                      <option value="FARMER_DECLARATION">Farmer / Producer Declaration</option>
+                      <option value="UPSTREAM_TRADE_PROOF">Upstream Trade Proof</option>
+                      <option value="LAND_RIGHTS_EVIDENCE">Land Rights Evidence</option>
+                      <option value="GEOLOCATION_FILE">Geolocation File</option>
+                      <option value="SUSTAINABILITY_CERTIFICATE">Sustainability Certificate</option>
+                      <option value="LEGAL_LICENSE">Legal / Operational License</option>
+                      <option value="LABOUR_RIGHTS_EVIDENCE">Labour Rights Evidence</option>
+                      <option value="DEFORESTATION_AUDIT">Deforestation Sat-Map Report</option>
+                      <option value="CHAIN_OF_CUSTODY_PROOF">Chain of Custody Validation Proof</option>
+                      <option value="AUDIT_SUMMARY">ESG Audit Summary</option>
+                      <option value="GEOLOCATION_SHAPEFILE">Geolocation Polygon Shapefile</option>
+                      <option value="CUSTOM">Other / Custom Role</option>
+                    </Select>
                   </FormField>
                   <FormField label="Linked Entity Type">
-                  <Select
-                    value={linkedEntityType}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setLinkedEntityType(value);
-                      if (value === "CUSTOM") form.setValue("linkedEntity", "");
-                      else form.setValue("linkedEntity", value);
-                    }}
-                  >
-                    <option value="CUSTOM">Custom Entity</option>
-                    <optgroup label="Active Suppliers">
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.name}>
-                          {supplier.name} (Supplier)
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Active Products">
-                      {products.map((product) => (
-                        <option key={product.id} value={product.name}>
-                          {product.name} (Product)
-                        </option>
-                      ))}
-                    </optgroup>
-                  </Select>
+                    <Select
+                      value={linkedEntityType}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setLinkedEntityType(value);
+                        if (value === "CUSTOM") form.setValue("linkedEntity", "");
+                        else form.setValue("linkedEntity", value);
+                      }}
+                    >
+                      <option value="CUSTOM">Custom Entity</option>
+                      <optgroup label="Active Suppliers">
+                        {suppliers.map((supplier) => (
+                          <option key={supplier.id} value={supplier.name}>
+                            {supplier.name} (Supplier)
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Active Products">
+                        {products.map((product) => (
+                          <option key={product.id} value={product.name}>
+                            {product.name} (Product)
+                          </option>
+                        ))}
+                      </optgroup>
+                    </Select>
                   </FormField>
                   <FormField label="Linked Entity Identifier" required error={form.formState.errors.linkedEntity?.message}>
                     <Input {...form.register("linkedEntity")} disabled={linkedEntityType !== "CUSTOM"} />

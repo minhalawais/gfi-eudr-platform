@@ -85,11 +85,10 @@ function LotBadge({ lot }: { lot: string }) {
   const isPending = lot === "PENDING" || lot === "—";
   return (
     <span
-      className={`inline-block rounded px-2 py-0.5 font-mono text-[11px] font-bold tracking-wide ${
-        isPending
+      className={`inline-block rounded px-2 py-0.5 font-mono text-[11px] font-bold tracking-wide ${isPending
           ? "bg-state-error/10 text-state-error"
           : "bg-amber-50 text-amber-700 border border-amber-200"
-      }`}
+        }`}
     >
       {lot}
     </span>
@@ -101,11 +100,10 @@ function ConditionBadge({ ok, trueLabel, falseLabel }: { ok?: boolean; trueLabel
   if (ok === undefined) return <span className="text-text-secondary text-sm">—</span>;
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
-        ok
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${ok
           ? "bg-state-success/10 text-state-success"
           : "bg-state-error/10 text-state-error"
-      }`}
+        }`}
     >
       <span>{ok ? "✓" : "✗"}</span>
       {ok ? trueLabel : falseLabel}
@@ -257,12 +255,12 @@ export default function ConsignmentsPage() {
   const derivedIngredientIssue: GateIssue | null =
     incompleteIngredientNodes.length > 0
       ? {
-          code: "INGREDIENT_SUPPLY_CHAIN_INCOMPLETE",
-          severity: "CRITICAL",
-          sourceDomain: "TRACEABILITY",
-          blocking: true,
-          message: `${incompleteIngredientNodes.length} cocoa ingredient chain node(s) still lack terminal farmer/producer evidence and approved plot data.`,
-        }
+        code: "INGREDIENT_SUPPLY_CHAIN_INCOMPLETE",
+        severity: "CRITICAL",
+        sourceDomain: "TRACEABILITY",
+        blocking: true,
+        message: `${incompleteIngredientNodes.length} cocoa ingredient chain node(s) still lack terminal farmer/producer evidence and approved plot data.`,
+      }
       : null;
 
   const visibleIssues = selectedConsignment
@@ -845,9 +843,8 @@ export default function ConsignmentsPage() {
                     {lines.map((line, idx) => (
                       <tr
                         key={line.sr}
-                        className={`border-t border-border-soft transition-colors hover:bg-brand-accent/5 ${
-                          idx % 2 === 0 ? "bg-bg-surface" : "bg-bg-surface-alt"
-                        }`}
+                        className={`border-t border-border-soft transition-colors hover:bg-brand-accent/5 ${idx % 2 === 0 ? "bg-bg-surface" : "bg-bg-surface-alt"
+                          }`}
                       >
                         <td className="px-3 py-2.5 text-text-secondary font-mono text-xs">{line.sr}</td>
                         <td className="px-3 py-2.5">
@@ -1137,11 +1134,6 @@ export default function ConsignmentsPage() {
       <SectionHeader
         title="Consignment Management"
         description="Validate shipment readiness across BOM, suppliers, geolocation, and chain-of-custody checks."
-        actions={
-          <Tag tone="brand">
-            Scenario: <span className="ml-1 font-semibold">{formatLabel(scenarioId)}</span>
-          </Tag>
-        }
       />
 
       {/* Stats Row */}
@@ -1155,8 +1147,8 @@ export default function ConsignmentsPage() {
           <p className="mt-2 text-2xl font-bold text-state-success">{queueStats.ready}</p>
         </Card>
         <Card variant="inset" className="p-4">
-          <p className="text-xs uppercase tracking-wide text-text-secondary">Blocked</p>
-          <p className="mt-2 text-2xl font-bold text-state-error">{queueStats.blocked}</p>
+          <p className="text-xs uppercase tracking-wide text-text-secondary">To be Shipped</p>
+          <p className="mt-2 text-2xl font-bold text-state-warning">{queueStats.blocked}</p>
         </Card>
       </div>
 
@@ -1190,8 +1182,8 @@ export default function ConsignmentsPage() {
                 consignment.gateStatus === "READY"
                   ? "text-state-success bg-state-success/10 border-state-success/20"
                   : consignment.gateStatus === "BLOCKED"
-                  ? "text-state-error bg-state-error/10 border-state-error/20"
-                  : "text-state-warning bg-state-warning/10 border-state-warning/20";
+                    ? "text-state-error bg-state-error/10 border-state-error/20"
+                    : "text-state-warning bg-state-warning/10 border-state-warning/20";
               return (
                 <button
                   key={consignment.id}
@@ -1308,11 +1300,10 @@ export default function ConsignmentsPage() {
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`relative inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150 ${
-                      isActive
+                    className={`relative inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150 ${isActive
                         ? "bg-brand-primary text-text-inverse shadow-sm"
                         : "text-text-secondary hover:bg-bg-surface hover:text-text-primary"
-                    }`}
+                      }`}
                   >
                     {tab.label}
                     {hasIssues && (
@@ -1703,7 +1694,7 @@ export default function ConsignmentsPage() {
             <form onSubmit={handleSaveProductLine} className="mt-5 space-y-5">
               <div className="space-y-3">
                 <SectionDivider title="Product Details" />
-                
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="space-y-2 text-sm block">
                     <span className="text-text-secondary font-medium">Product Name *</span>
@@ -1729,7 +1720,7 @@ export default function ConsignmentsPage() {
 
               <div className="space-y-3">
                 <SectionDivider title="Quantities & Lot #" />
-                
+
                 <div className="grid gap-4 sm:grid-cols-3">
                   <label className="space-y-2 text-sm block">
                     <span className="text-text-secondary font-medium">Total Cartons *</span>
@@ -1748,7 +1739,7 @@ export default function ConsignmentsPage() {
 
               <div className="space-y-3">
                 <SectionDivider title="Dates & Weight" />
-                
+
                 <div className="grid gap-4 sm:grid-cols-3">
                   <label className="space-y-2 text-sm block">
                     <span className="text-text-secondary font-medium">Mfg Date</span>

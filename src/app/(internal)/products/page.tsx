@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Plus, RotateCcw, Trash2, FileEdit, Upload, Calendar, User, FileText } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Plus, RotateCcw, Trash2, FileEdit, Upload, Calendar, User, FileText, Eye, X, Download, ShieldCheck } from "lucide-react";
 import { getSupplierName } from "@/lib/gfi-dummy-data";
 import { useSession } from "@/components/ui/PermissionGuard";
 import { IngredientRecord, ProductRecord } from "@/lib/gfi-dummy-data";
@@ -269,7 +269,11 @@ export default function ProductsPage() {
   // Upload certification modal states
   const [isUploadCertModalOpen, setIsUploadCertModalOpen] = useState(false);
   const [certIngredientId, setCertIngredientId] = useState<string | null>(null);
+
+  // Viewing document modal state
+  const [viewingIngredientDoc, setViewingIngredientDoc] = useState<IngredientRecord | null>(null);
   const [certForm, setCertForm] = useState({
+    documentTitle: "",
     certifications: "",
     certificationsExpiry: "",
     fileName: "",
@@ -306,6 +310,9 @@ export default function ProductsPage() {
   const [ingReadiness, setIngReadiness] = useState<"READY" | "BLOCKED" | "REVIEW_REQUIRED">("READY");
   const [ingEvidence, setIngEvidence] = useState<"COMPLETE" | "PARTIAL" | "MISSING">("COMPLETE");
   const [ingSupplier, setIngSupplier] = useState("");
+  const [ingScientificName, setIngScientificName] = useState("");
+  const [ingCocModel, setIngCocModel] = useState("Not Applicable");
+  const [ingCertifications, setIngCertifications] = useState("");
   const [ingredientSearch, setIngredientSearch] = useState("");
   const [relevanceFilter, setRelevanceFilter] = useState<RelevanceFilter>("ALL");
 
@@ -532,6 +539,7 @@ export default function ProductsPage() {
   const handleOpenUploadCert = (ingredient: IngredientRecord) => {
     setCertIngredientId(ingredient.id);
     setCertForm({
+      documentTitle: ingredient.documentTitle || "",
       certifications: ingredient.certifications && ingredient.certifications !== "Not Applicable" ? ingredient.certifications : "",
       certificationsExpiry: ingredient.certificationsExpiry || "",
       fileName: "",
@@ -548,6 +556,7 @@ export default function ProductsPage() {
       if (ing.id === certIngredientId) {
         return {
           ...ing,
+          documentTitle: certForm.documentTitle || undefined,
           certifications: certForm.certifications || "Not Applicable",
           certificationsExpiry: certForm.certificationsExpiry || undefined,
           documentType: certForm.certifications ? certForm.documentType : undefined,
@@ -579,6 +588,9 @@ export default function ProductsPage() {
     setIngReadiness("READY");
     setIngEvidence("COMPLETE");
     setIngSupplier("");
+    setIngScientificName("");
+    setIngCocModel("Not Applicable");
+    setIngCertifications("");
   };
 
   const resetForm = () => {
@@ -606,10 +618,10 @@ export default function ProductsPage() {
       evidenceStatus: ingEvidence,
       blockingReason: ingReadiness === "BLOCKED" ? "Missing supplier provenance files." : "",
       supplyChainStatus: "NOT_REQUESTED",
-      scientificName: "Not Applicable",
-      cocModel: "Not Applicable",
+      scientificName: ingScientificName || "Not Applicable",
+      cocModel: ingCocModel || "Not Applicable",
       supplierName: supplier?.name || "No supplier linkage",
-      certifications: "Not Applicable",
+      certifications: ingCertifications || "Not Applicable",
       originCountries: supplier ? [supplier.country] : [],
       primaryOriginCountry: supplier?.country ?? "",
       euRiskTier: "UNKNOWN",
@@ -739,37 +751,30 @@ export default function ProductsPage() {
               </Card>
             ) : null}
 
-            {decisionHeaderVm && dossierVm ? (
-              <Card className="space-y-4">
+            <Card className="space-y-4">
+              {decisionHeaderVm && (
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border-soft pb-4">
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2.5">
-                      <h2 className="text-xl font-extrabold text-brand-primary">{decisionHeaderVm.name}</h2>
-                      <span className="rounded bg-bg-page/80 border border-border-soft px-2 py-0.5 text-xs font-bold text-brand-primary">
+                      <h2 className="text-2xl font-black text-brand-primary leading-tight">{decisionHeaderVm.name}</h2>
+                      <span className="rounded bg-bg-page/80 border border-border-soft px-2.5 py-0.5 text-xs font-bold text-brand-primary shadow-sm">
                         HS {decisionHeaderVm.hsCode}
                       </span>
+                      <Tag tone="neutral" className="font-semibold text-xs">
+                        BOM • Total {evidenceSummaryVm.total} Ingredients
+                      </Tag>
                     </div>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+                    onClick={handleOpenAddIngredient}
+                  >
+                    Add Ingredient
+                  </Button>
                 </div>
-
-              </Card>
-            ) : null}
-
-            <Card className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border-soft pb-2">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-brand-primary">Product BOM</h3>
-                  <Tag tone="neutral">Total {evidenceSummaryVm.total}</Tag>
-                </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  icon={<Plus className="h-4 w-4" aria-hidden="true" />}
-                  onClick={handleOpenAddIngredient}
-                >
-                  Add Ingredient
-                </Button>
-              </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   value={ingredientSearch}
@@ -788,7 +793,7 @@ export default function ProductsPage() {
                       <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Scientific Name</TableHeaderCell>
                       <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Chain of Custody model</TableHeaderCell>
                       <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Supplier name</TableHeaderCell>
-                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Certifications</TableHeaderCell>
+                      <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt">Documentation</TableHeaderCell>
                       <TableHeaderCell density={densityValue} className="sticky top-0 z-10 bg-bg-surface-alt text-center">Actions</TableHeaderCell>
                     </tr>
                   </TableHead>
@@ -831,21 +836,62 @@ export default function ProductsPage() {
                             </TableCell>
                             <TableCell density={densityValue} className="align-top">
                               {ingredient.certifications && ingredient.certifications !== "Not Applicable" ? (
-                                <div className="space-y-1">
-                                  {ingredient.documentType && (
-                                    <span className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider leading-tight">
-                                      {ingredient.documentType}
-                                    </span>
-                                  )}
-                                  <Tag tone="brand" className="mt-0.5">{ingredient.certifications}</Tag>
-                                  {ingredient.certificationsExpiry && (
-                                    <span className="block text-[10px] text-text-secondary font-semibold">
-                                      Exp: {ingredient.certificationsExpiry}
-                                    </span>
-                                  )}
+                                <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                  <Card variant="inset" className="p-2.5 border border-border-soft bg-bg-surface flex items-center justify-between gap-3 rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.02)] max-w-[280px]">
+                                    <div className="min-w-0 space-y-1">
+                                      {ingredient.documentType && (
+                                        <span className="block text-[9px] font-bold text-text-secondary uppercase tracking-wider leading-none">
+                                          {ingredient.documentType}
+                                        </span>
+                                      )}
+                                      <span className="text-xs font-semibold text-text-primary block truncate" title={ingredient.documentTitle || ingredient.certifications}>
+                                        {ingredient.documentTitle || ingredient.certifications}
+                                      </span>
+                                      {ingredient.documentTitle && ingredient.certifications && (
+                                        <span className="block text-[10px] text-text-secondary font-medium leading-none">
+                                          Ref: {ingredient.certifications}
+                                        </span>
+                                      )}
+                                      {ingredient.certificationsExpiry && (
+                                        <span className="block text-[9px] text-text-muted font-semibold leading-none">
+                                          Exp: {ingredient.certificationsExpiry}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      title="View Document"
+                                      onClick={() => {
+                                        setViewingIngredientDoc(ingredient);
+                                      }}
+                                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border-soft bg-white text-text-muted hover:text-brand-primary hover:bg-brand-accent-soft/20 shadow-sm transition-all duration-150"
+                                    >
+                                      <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                    </button>
+                                  </Card>
+                                  <div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenUploadCert(ingredient)}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold rounded-lg border border-border-soft bg-white text-brand-primary hover:border-brand-primary/30 hover:bg-brand-accent-soft/20 shadow-sm transition-all duration-150"
+                                    >
+                                      <Upload className="h-3 w-3" /> Upload Document
+                                    </button>
+                                  </div>
                                 </div>
                               ) : (
-                                <span className="block leading-6 text-text-muted">Not Applicable</span>
+                                <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                  <span className="block text-xs italic text-text-muted">No document uploaded</span>
+                                  <div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenUploadCert(ingredient)}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold rounded-lg border border-border-soft bg-white text-brand-primary hover:border-brand-primary/30 hover:bg-brand-accent-soft/20 shadow-sm transition-all duration-150"
+                                    >
+                                      <Upload className="h-3 w-3" /> Upload Document
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </TableCell>
                             <TableCell density={densityValue} className="align-top text-center">
@@ -857,14 +903,6 @@ export default function ProductsPage() {
                                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-soft bg-bg-surface text-brand-primary/80 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-primary/30 hover:bg-brand-accent-soft/40 hover:text-brand-primary hover:shadow-sm"
                                 >
                                   <FileEdit className="h-4 w-4" aria-hidden="true" />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Upload Documentation"
-                                  onClick={() => handleOpenUploadCert(ingredient)}
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-soft bg-bg-surface text-brand-primary/80 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-primary/30 hover:bg-brand-accent-soft/40 hover:text-brand-primary hover:shadow-sm"
-                                >
-                                  <Upload className="h-4 w-4" aria-hidden="true" />
                                 </button>
                                 <button
                                   type="button"
@@ -996,20 +1034,7 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Target Markets (comma-separated)</label>
-                  <Input required value={formMarkets} onChange={(e) => setFormMarkets(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Annual Volume</label>
-                  <Input required value={formVolume} onChange={(e) => setFormVolume(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-secondary">Active BOM Revision</label>
-                  <Input required value={formRevision} onChange={(e) => setFormRevision(e.target.value)} />
-                </div>
-              </div>
+
 
               <Card variant="inset" className="space-y-3 p-4">
                 <h4 className="text-sm font-bold text-brand-primary">Active BOM Ingredients Builder</h4>
@@ -1036,7 +1061,7 @@ export default function ProductsPage() {
                   )}
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-[11px] font-semibold text-text-secondary">Ingredient Name</label>
                     <Input value={ingName} onChange={(e) => setIngName(e.target.value)} placeholder="e.g. Cocoa Butter" className="h-9 text-xs" />
@@ -1045,47 +1070,47 @@ export default function ProductsPage() {
                     <label className="text-[11px] font-semibold text-text-secondary">HS Code</label>
                     <Input value={ingHs} onChange={(e) => setIngHs(e.target.value)} placeholder="e.g. 1804.00" className="h-9 text-xs" />
                   </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-1">
                     <label className="text-[11px] font-semibold text-text-secondary">BOM Share (%)</label>
-                    <Input value={ingPct} onChange={(e) => setIngPct(e.target.value)} className="h-9 text-xs" />
+                    <Input value={ingPct} onChange={(e) => setIngPct(e.target.value)} placeholder="e.g. 20%" className="h-9 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-text-secondary">Scientific Name</label>
+                    <Input value={ingScientificName} onChange={(e) => setIngScientificName(e.target.value)} placeholder="e.g. Theobroma cacao" className="h-9 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-text-secondary">Chain of Custody model</label>
+                    <Select value={ingCocModel} onChange={(e) => setIngCocModel(e.target.value)} className="h-9 py-1 text-xs">
+                      <option value="Not Applicable">Not Applicable</option>
+                      <option value="SG">Segregated (SG)</option>
+                      <option value="IP">Identity Preserved (IP)</option>
+                      <option value="MB">Mass Balance (MB)</option>
+                      <option value="BC">Book & Claim (BC)</option>
+                    </Select>
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-text-secondary">Commodity Scope</label>
-                    <Select value={ingCommodity} onChange={(e) => setIngCommodity(e.target.value as typeof ingCommodity)} className="h-9 py-1 text-xs">
-                      <option value="COCOA">COCOA</option>
-                      <option value="PALM">PALM</option>
-                      <option value="COFFEE">COFFEE</option>
-                      <option value="SOYA">SOYA</option>
-                      <option value="RUBBER">RUBBER</option>
-                      <option value="WOOD">WOOD</option>
-                      <option value="CATTLE">CATTLE</option>
-                      <option value="NONE">NONE / EXEMPT</option>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-text-secondary">Relevance</label>
-                    <Select value={ingRelevance} onChange={(e) => setIngRelevance(e.target.value as typeof ingRelevance)} className="h-9 py-1 text-xs">
-                      <option value="IN_SCOPE">IN SCOPE</option>
-                      <option value="OUT_OF_SCOPE">OUT OF SCOPE</option>
-                      <option value="UNDER_REVIEW">UNDER REVIEW</option>
-                    </Select>
-                  </div>
+                <div className="grid gap-3 sm:grid-cols-[1.5fr_1.5fr_1fr]">
                   <div className="space-y-1">
                     <label className="text-[11px] font-semibold text-text-secondary">Supplier Link</label>
                     <Select value={ingSupplier} onChange={(e) => setIngSupplier(e.target.value)} className="h-9 py-1 text-xs">
-                      <option value="">No supplier linkage</option>
+                      <option value="">No supplier linkage (Direct)</option>
                       {currentSuppliers.map((supplier) => (
                         <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
+                          {supplier.name} ({supplier.country})
                         </option>
                       ))}
                     </Select>
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-text-secondary">Certifications</label>
+                    <Input value={ingCertifications} onChange={(e) => setIngCertifications(e.target.value)} placeholder="e.g. BVC-RSPO-MY008900" className="h-9 text-xs" />
+                  </div>
                   <div className="flex items-end">
-                    <Button type="button" size="sm" onClick={handleAddIngredient} className="w-full">
+                    <Button type="button" size="sm" onClick={handleAddIngredient} className="w-full h-9">
                       Add Ingredient
                     </Button>
                   </div>
@@ -1294,21 +1319,13 @@ export default function ProductsPage() {
 
             <form onSubmit={handleSaveUploadCert} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Document Type</label>
-                <Select
-                  value={certForm.documentType}
-                  onChange={(e) => setCertForm({ ...certForm, documentType: e.target.value })}
-                >
-                  <option value="Agreements & Contracts">Agreements & Contracts</option>
-                  <option value="Certificates & Declarations">Certificates & Declarations</option>
-                  <option value="Product & Ingredient Documents">Product & Ingredient Documents</option>
-                  <option value="Chain of Custody (CoC) Documents">Chain of Custody (CoC) Documents</option>
-                  <option value="Geolocation & Mapping Records">Geolocation & Mapping Records</option>
-                  <option value="Legal & Permit Documents">Legal & Permit Documents</option>
-                  <option value="Audit & Assessment Reports">Audit & Assessment Reports</option>
-                  <option value="Policies & Procedures">Policies & Procedures</option>
-                  <option value="Due Diligence Documents">Due Diligence Documents</option>
-                </Select>
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Document Title</label>
+                <Input
+                  required
+                  value={certForm.documentTitle}
+                  onChange={(e) => setCertForm({ ...certForm, documentTitle: e.target.value })}
+                  placeholder="e.g. Sumatra Palm Oil Supply Agreement"
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -1522,6 +1539,123 @@ export default function ProductsPage() {
                 }}
               >
                 Close Details
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Viewing Ingredient Document Modal */}
+      {viewingIngredientDoc ? (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setViewingIngredientDoc(null);
+          }}
+        >
+          <Card className="w-full max-w-4xl overflow-hidden p-0 bg-white dark:bg-bg-surface shadow-2xl border border-border-soft rounded-2xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-border-soft p-5 bg-bg-surface-alt">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-brand-accent-soft/20 text-brand-primary">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-extrabold text-brand-primary leading-tight">
+                    {viewingIngredientDoc.documentTitle || viewingIngredientDoc.certifications}
+                  </h2>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    {viewingIngredientDoc.documentTitle ? `Ref: ${viewingIngredientDoc.certifications}` : "No Reference"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingIngredientDoc(null)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-surface-hover transition-all duration-150"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto bg-slate-50/50 dark:bg-bg-surface/30">
+              {/* Document Info Grid */}
+              <div className="grid grid-cols-4 gap-4 bg-white dark:bg-bg-surface border border-border-soft p-4 rounded-xl shadow-sm">
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary font-semibold">Document Type</span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold border uppercase tracking-wider shadow-sm ${
+                    (() => {
+                      const vt = (viewingIngredientDoc.documentType || "Certificates & Declarations").toLowerCase();
+                      if (vt.includes("declaration") || vt.includes("coc") || vt.includes("chain of custody")) {
+                        return "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]";
+                      }
+                      if (vt.includes("certificate") || vt.includes("diligence")) {
+                        return "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]";
+                      }
+                      if (vt.includes("license") || vt.includes("permit") || vt.includes("geolocation") || vt.includes("mapping")) {
+                        return "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]";
+                      }
+                      if (vt.includes("audit") || vt.includes("assessment") || vt.includes("report")) {
+                        return "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]";
+                      }
+                      return "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]";
+                    })()
+                  }`}>
+                    {viewingIngredientDoc.documentType || "Certificates & Declarations"}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary font-semibold">Verification Status</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Verified Active
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary font-semibold">Expiry Date</span>
+                  <span className="block mt-0.5 text-sm font-semibold text-text-primary">
+                    {viewingIngredientDoc.certificationsExpiry || "No Expiry"}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary font-semibold">Ingredient / Supplier</span>
+                  <span className="block mt-0.5 text-sm font-semibold text-text-primary truncate" title={`${viewingIngredientDoc.name} (${viewingIngredientDoc.supplierName})`}>
+                    {viewingIngredientDoc.name} ({viewingIngredientDoc.supplierName})
+                  </span>
+                </div>
+              </div>
+
+              {/* PDF Viewer */}
+              <div className="border border-border-soft bg-white dark:bg-bg-surface-alt rounded-xl shadow-sm overflow-hidden h-[500px]">
+                <iframe
+                  src="/test.pdf"
+                  className="w-full h-full border-none"
+                  title="PDF Viewer"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-border-soft p-4 bg-bg-surface-alt">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                icon={<Download className="h-4 w-4" />}
+                onClick={() => {
+                  alert(`Simulating file download: test.pdf`);
+                }}
+              >
+                Download File
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setViewingIngredientDoc(null)}
+              >
+                Close
               </Button>
             </div>
           </Card>

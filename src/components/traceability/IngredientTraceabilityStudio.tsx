@@ -34,6 +34,7 @@ import {
   Card,
   Button,
   StatusBadge,
+  Tag,
 } from "@/components/ui";
 
 type StatusFilter = SupplyChainNode["status"] | "ALL";
@@ -376,14 +377,34 @@ function RootSelectorCard(props: {
   const { root, isSelected, onClick } = props;
 
   return (
-    <button type="button" className={`traceability-root-card w-full min-w-0 text-left${isSelected ? " is-selected" : ""}`} onClick={onClick}>
-      <div className="traceability-root-card__top flex items-start gap-2 w-full min-w-0">
-        <div className="traceability-root-card__title-wrap flex items-start gap-2.5 flex-1 min-w-0">
-          <div className="grid gap-0.5 text-left min-w-0 w-full">
-            <strong className="text-xs font-extrabold text-brand-primary truncate block w-full">{root.ingredientName}</strong>
-            <span className="traceability-root-card__subline text-[10px] text-text-secondary leading-normal truncate block w-full">{root.productName} • {root.directSupplierName}</span>
-          </div>
-        </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "relative group w-full rounded-lg border pl-4 pr-3 py-2.5 text-left transition-all duration-200 ease-emphasized overflow-hidden",
+        isSelected
+          ? "border-brand-primary bg-brand-accent-soft/40 shadow-sm"
+          : "border-border-soft bg-bg-surface hover:-translate-y-0.5 hover:border-border-strong hover:bg-bg-surface-alt hover:shadow-card",
+      ].join(" ")}
+    >
+      {isSelected && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-primary rounded-l-lg" />
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <strong className="block truncate text-sm font-bold text-brand-primary transition-colors group-hover:text-brand-primary-dark">
+          {root.ingredientName}
+        </strong>
+        <span className="text-[10px] font-semibold text-text-muted shrink-0">
+          {root.totalActors} actors
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="rounded bg-bg-page/55 border border-border-soft px-1.5 py-0.5 text-[10px] font-bold text-text-secondary truncate max-w-[120px]" title={root.productName}>
+          {root.productName}
+        </span>
+        <span className="rounded bg-bg-page/55 border border-border-soft px-1.5 py-0.5 text-[10px] font-bold text-text-secondary truncate max-w-[120px]" title={root.directSupplierName}>
+          {root.directSupplierName}
+        </span>
       </div>
     </button>
   );
@@ -398,6 +419,30 @@ function buildTraceabilityLink(root: IngredientTraceabilityRootSummary): string 
   });
   return `/traceability?${params.toString()}`;
 }
+
+const ALL_COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", 
+  "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", 
+  "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", 
+  "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", 
+  "Comoros", "Congo", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", 
+  "Djibouti", "Dominica", "Dominican Republic", "East Timor", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", 
+  "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", 
+  "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", 
+  "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", 
+  "Kazakhstan", "Kenya", "Kiribati", "North Korea", "South Korea", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", 
+  "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", 
+  "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", 
+  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", 
+  "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan", 
+  "Palau", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", 
+  "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", 
+  "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", 
+  "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", 
+  "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", "Tonga", "Trinidad and Tobago", 
+  "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", 
+  "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+];
 
 export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudioProps) {
   const { viewModel, selectedRootId, onSelectRoot } = props;
@@ -888,23 +933,25 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
 
   const renderMergedTreeMap = (mode: "inline" | "fullscreen" = "inline") => (
     <div className={`traceability-map${mode === "fullscreen" ? " traceability-map--fullscreen" : ""}`}>
-      <div className="traceability-map__header">
-        <div>
-          <p className="traceability-map__eyebrow">Supply Chain Map</p>
-          <h3>{selectedRoot.ingredientName}</h3>
-          <span>{selectedRoot.productName} • {selectedRoot.directSupplierName}</span>
+      {mode === "fullscreen" && (
+        <div className="traceability-map__header">
+          <div>
+            <p className="traceability-map__eyebrow">Supply Chain Map</p>
+            <h3>{selectedRoot.ingredientName}</h3>
+            <span>{selectedRoot.productName} • {selectedRoot.directSupplierName}</span>
+          </div>
+          <div className="traceability-map__meta">
+            <button
+              type="button"
+              className="traceability-icon-button"
+              onClick={() => setIsMapFullscreen(false)}
+              aria-label="Close full screen supply chain map"
+            >
+              <CloseGlyph />
+            </button>
+          </div>
         </div>
-        <div className="traceability-map__meta">
-          <button
-            type="button"
-            className="traceability-icon-button"
-            onClick={() => setIsMapFullscreen(mode !== "fullscreen")}
-            aria-label={mode === "fullscreen" ? "Close full screen supply chain map" : "Open full screen supply chain map"}
-          >
-            {mode === "fullscreen" ? <CloseGlyph /> : <FullscreenGlyph />}
-          </button>
-        </div>
-      </div>
+      )}
 
       <div className="traceability-map__legend">
         <span><em className="traceability-map__lane-dot traceability-map__lane-dot--supplier" />Direct supplier</span>
@@ -920,64 +967,76 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
 
   return (
     <div className="traceability-studio">
-      <div className="traceability-studio__rail fos-card flex flex-col lg:sticky lg:top-6 lg:max-h-[calc(100vh-8rem)] lg:overflow-hidden">
-        <div className="traceability-studio__section-title">
-          <h2>Ingredient roots</h2>
-          <span>{viewModel.roots.length} chains</span>
-        </div>
-        <div className="traceability-studio__rail-list min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-1 pr-2">
-          <div className="w-full space-y-2.5 min-w-0">
-            {viewModel.roots.map((root) => (
-              <RootSelectorCard key={root.rootId} root={root} isSelected={root.rootId === selectedRoot.rootId} onClick={() => onSelectRoot(root.rootId)} />
-            ))}
+      <Card className="flex flex-col gap-4 border-border-strong/70 bg-gradient-to-b from-bg-surface to-bg-surface-alt lg:sticky lg:top-6 lg:max-h-[calc(100vh-8rem)] lg:overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-border-soft/80 pb-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-brand-primary">Ingredient roots</h2>
+            <p className="text-xs text-text-secondary">Select an ingredient to view traceability posture</p>
           </div>
+          <Tag tone="neutral">{viewModel.roots.length}</Tag>
         </div>
-      </div>
+        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+          {viewModel.roots.map((root) => (
+            <RootSelectorCard key={root.rootId} root={root} isSelected={root.rootId === selectedRoot.rootId} onClick={() => onSelectRoot(root.rootId)} />
+          ))}
+        </div>
+      </Card>
 
       <div className="traceability-studio__content">
-        <div className="fos-card traceability-overview p-6 rounded-xl border border-white/40 bg-gradient-to-br from-white/95 to-bg-page/95 shadow-md">
-          <div className="traceability-overview__hero flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div className="traceability-overview__hero-copy space-y-1">
+        {/* Merged Supply Chain Overview & Map Card */}
+        <Card className="p-6 border-border-strong/70 bg-gradient-to-b from-bg-surface to-bg-surface-alt shadow-sm space-y-6">
+          {/* Merged Header */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-border-soft pb-5">
+            <div className="space-y-1">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                Supply Chain Map
+              </span>
               <h2 className="text-2xl font-black text-brand-primary flex items-center gap-2">
                 <span className="text-3xl select-none leading-none">{getCommodityIcon(selectedRoot.ingredientName)}</span>
                 {selectedRoot.ingredientName}
               </h2>
-              <span className="text-xs text-text-secondary font-medium">
+              <p className="text-xs text-text-secondary font-medium font-sans">
                 {selectedRoot.productName} • {selectedRoot.directSupplierName}
-              </span>
+              </p>
             </div>
-            <div className="traceability-overview__impact flex items-center gap-4">
-              <div className="bg-white rounded-xl border border-brand-primary/10 p-3 text-center min-w-[130px] shadow-sm flex flex-col justify-center">
-                <strong className="text-2xl font-black text-brand-primary leading-none tracking-tight">
-                  {selectedRoot.completionPercent}%
-                </strong>
-                <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider mt-1 block">
+            
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Branch Completion info */}
+              <div className="bg-white dark:bg-bg-surface border border-border-soft px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-2.5">
+                <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">
                   Branch Completion
                 </span>
+                <strong className="text-sm font-black text-brand-primary leading-none tracking-tight">
+                  {selectedRoot.completionPercent}%
+                </strong>
               </div>
-              <span className={`traceability-impact text-xs font-extrabold uppercase px-4 py-2 rounded-full border tracking-wide select-none ${
+
+              {/* Shipment impact status */}
+              <span className={`text-[10px] font-extrabold uppercase px-2.5 py-1.5 rounded-lg border tracking-wide select-none ${
                 selectedRoot.shipmentImpact === "READY" ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" : 
                 selectedRoot.shipmentImpact === "BLOCKED" ? "bg-state-error/10 text-state-error border-state-error/20" : 
                 "bg-amber-500/10 text-amber-700 border-amber-500/20"
               }`}>
                 {selectedRoot.shipmentImpact === "AT_RISK" ? "At Risk" : toSentenceCase(selectedRoot.shipmentImpact)}
               </span>
+
+              {/* Fullscreen button */}
+              <button
+                type="button"
+                className="traceability-icon-button"
+                onClick={() => setIsMapFullscreen(true)}
+                title="Open full screen supply chain map"
+              >
+                <FullscreenGlyph />
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="traceability-studio__workspace">
-          <div className="traceability-studio__canvas fos-card p-5 rounded-xl border border-border-soft bg-bg-surface shadow-sm">
-            <div className="traceability-studio__section-title flex justify-between items-center pb-3 border-b border-border-soft/60">
-              <h2 className="text-base font-extrabold text-brand-primary uppercase tracking-wider">Supply chain map</h2>
-              <span className="text-[10px] font-bold text-brand-primary bg-brand-primary/5 border border-brand-primary/10 px-3 py-1 rounded-full">{visibleNodeCount} visible actors</span>
-            </div>
-
-            <div className="mt-4">
-              {renderMergedTreeMap("inline")}
-            </div>
+          {/* Map Body */}
+          <div>
+            {renderMergedTreeMap("inline")}
           </div>
-        </div>
+        </Card>
 
         {/* Chain Requests Card */}
         <div className="traceability-studio__workspace mt-6">
@@ -1234,20 +1293,19 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
               </FormField>
 
               <FormField label="Country of Operation" required>
-                <Select
+                <Input
+                  type="text"
+                  list="countries-datalist"
                   value={newActorCountry}
                   onChange={(e) => setNewActorCountry(e.target.value)}
-                >
-                  <option value="Indonesia">Indonesia</option>
-                  <option value="Malaysia">Malaysia</option>
-                  <option value="Cote d'Ivoire">Cote d'Ivoire</option>
-                  <option value="Ghana">Ghana</option>
-                  <option value="Colombia">Colombia</option>
-                  <option value="Brazil">Brazil</option>
-                  <option value="Pakistan">Pakistan</option>
-                  <option value="Ecuador">Ecuador</option>
-                  <option value="Peru">Peru</option>
-                </Select>
+                  placeholder="Select or type country..."
+                  required
+                />
+                <datalist id="countries-datalist">
+                  {ALL_COUNTRIES.map((country) => (
+                    <option key={country} value={country} />
+                  ))}
+                </datalist>
               </FormField>
             </FormGrid>
 
@@ -1272,21 +1330,6 @@ export function IngredientTraceabilityStudio(props: IngredientTraceabilityStudio
                 />
               </FormField>
             </FormGrid>
-
-            <FormField label="EUDR Compliance Status" required>
-              <Select
-                value={newActorStatus}
-                onChange={(e) => setNewActorStatus(e.target.value as any)}
-              >
-                <option value="COMPLETE">Complete (Accepted Proofs)</option>
-                <option value="SUBMITTED">Submitted (Pending Review)</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="REQUESTED">Requested</option>
-                <option value="GAPS_FOUND">Gaps Found</option>
-                <option value="BLOCKED">Blocked</option>
-                <option value="NOT_REQUESTED">Not Requested</option>
-              </Select>
-            </FormField>
           </ModalBody>
           <ModalFooter>
             <FormActions submitLabel="Add Actor" onCancel={() => setIsAddActorModalOpen(false)} />

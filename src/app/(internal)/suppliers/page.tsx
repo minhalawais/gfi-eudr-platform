@@ -272,7 +272,7 @@ export default function SuppliersPage() {
   // Supplier Document Upload states
   const [isUploadDocModalOpen, setIsUploadDocModalOpen] = useState(false);
   const [formDocTitle, setFormDocTitle] = useState("");
-  const [formDocType, setFormDocType] = useState<"Agreement" | "Declaration" | "Certificate" | "License" | "Audit Record">("Agreement");
+  const [formDocType, setFormDocType] = useState<string>("Agreements & Contracts");
   const [formDocFileName, setFormDocFileName] = useState("");
 
   // Supplier Document View state
@@ -567,7 +567,7 @@ export default function SuppliersPage() {
 
   const handleOpenUploadDoc = () => {
     setFormDocTitle("");
-    setFormDocType("Agreement");
+    setFormDocType("Agreements & Contracts");
     setFormDocFileName("");
     setIsUploadDocModalOpen(true);
   };
@@ -762,16 +762,18 @@ export default function SuppliersPage() {
                     selectedSupplier.documents.map((doc) => {
                       let typeColor = "border-l-[5px] border-l-blue-500/90 dark:border-l-blue-400/90";
                       let typeLabelColor = "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]";
-                      if (doc.type === "Declaration") {
+
+                      const docType = doc.type.toLowerCase();
+                      if (docType.includes("declaration") || docType.includes("coc") || docType.includes("chain of custody")) {
                         typeColor = "border-l-[5px] border-l-emerald-500/90 dark:border-l-emerald-400/90";
                         typeLabelColor = "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]";
-                      } else if (doc.type === "Certificate") {
+                      } else if (docType.includes("certificate") || docType.includes("diligence")) {
                         typeColor = "border-l-[5px] border-l-violet-500/90 dark:border-l-violet-400/90";
                         typeLabelColor = "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]";
-                      } else if (doc.type === "License") {
+                      } else if (docType.includes("license") || docType.includes("permit") || docType.includes("geolocation") || docType.includes("mapping")) {
                         typeColor = "border-l-[5px] border-l-amber-500/90 dark:border-l-amber-400/90";
                         typeLabelColor = "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]";
-                      } else if (doc.type === "Audit Record") {
+                      } else if (docType.includes("audit") || docType.includes("assessment") || docType.includes("report")) {
                         typeColor = "border-l-[5px] border-l-rose-500/90 dark:border-l-rose-400/90";
                         typeLabelColor = "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]";
                       }
@@ -1099,13 +1101,17 @@ export default function SuppliersPage() {
                 <label className="text-sm font-semibold text-text-secondary">Document Type</label>
                 <Select
                   value={formDocType}
-                  onChange={(e) => setFormDocType(e.target.value as any)}
+                  onChange={(e) => setFormDocType(e.target.value)}
                 >
-                  <option value="Agreement">Agreement</option>
-                  <option value="Declaration">Declaration</option>
-                  <option value="Certificate">Certificate</option>
-                  <option value="License">License</option>
-                  <option value="Audit Record">Audit Record</option>
+                  <option value="Agreements & Contracts">Agreements & Contracts</option>
+                  <option value="Certificates & Declarations">Certificates & Declarations</option>
+                  <option value="Product & Ingredient Documents">Product & Ingredient Documents</option>
+                  <option value="Chain of Custody (CoC) Documents">Chain of Custody (CoC) Documents</option>
+                  <option value="Geolocation & Mapping Records">Geolocation & Mapping Records</option>
+                  <option value="Legal & Permit Documents">Legal & Permit Documents</option>
+                  <option value="Audit & Assessment Reports">Audit & Assessment Reports</option>
+                  <option value="Policies & Procedures">Policies & Procedures</option>
+                  <option value="Due Diligence Documents">Due Diligence Documents</option>
                 </Select>
               </div>
 
@@ -1187,16 +1193,24 @@ export default function SuppliersPage() {
               <div className="grid grid-cols-4 gap-4 bg-white dark:bg-bg-surface border border-border-soft p-4 rounded-xl shadow-sm">
                 <div>
                   <span className="block text-[10px] uppercase font-bold tracking-wider text-text-secondary">Document Type</span>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold border uppercase tracking-wider shadow-sm ${viewingDoc.type === "Declaration"
-                    ? "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]"
-                    : viewingDoc.type === "Certificate"
-                      ? "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]"
-                      : viewingDoc.type === "License"
-                        ? "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]"
-                        : viewingDoc.type === "Audit Record"
-                          ? "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]"
-                          : "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]"
-                    }`}>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-bold border uppercase tracking-wider shadow-sm ${
+                    (() => {
+                      const vt = viewingDoc.type.toLowerCase();
+                      if (vt.includes("declaration") || vt.includes("coc") || vt.includes("chain of custody")) {
+                        return "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10 border-emerald-500/30 dark:border-emerald-400/30 shadow-[0_1px_2px_rgba(16,185,129,0.12)]";
+                      }
+                      if (vt.includes("certificate") || vt.includes("diligence")) {
+                        return "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10 border-violet-500/30 dark:border-violet-400/30 shadow-[0_1px_2px_rgba(139,92,246,0.12)]";
+                      }
+                      if (vt.includes("license") || vt.includes("permit") || vt.includes("geolocation") || vt.includes("mapping")) {
+                        return "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 shadow-[0_1px_2px_rgba(245,158,11,0.12)]";
+                      }
+                      if (vt.includes("audit") || vt.includes("assessment") || vt.includes("report")) {
+                        return "text-rose-600 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10 border-rose-500/30 dark:border-rose-400/30 shadow-[0_1px_2px_rgba(244,63,94,0.12)]";
+                      }
+                      return "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 shadow-[0_1px_2px_rgba(59,130,246,0.12)]";
+                    })()
+                  }`}>
                     {viewingDoc.type}
                   </span>
                 </div>

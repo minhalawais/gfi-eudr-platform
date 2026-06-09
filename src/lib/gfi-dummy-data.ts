@@ -92,7 +92,7 @@ export interface SupplierRecord {
 export interface SupplierDocument {
   id: string;
   name: string;
-  type: "Agreement" | "Declaration" | "Certificate" | "License" | "Audit Record";
+  type: string;
   fileName: string;
   uploadDate: string;
   size?: string;
@@ -127,6 +127,7 @@ export interface IngredientRecord {
   certifications?: string;
   certificationsExpiry?: string;
   documentType?: string;
+  documentTitle?: string;
   originCountries: string[];
   primaryOriginCountry: string;
   euRiskTier: EuCountryRiskTier;

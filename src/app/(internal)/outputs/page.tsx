@@ -100,10 +100,10 @@ export default function OutputsPage() {
               previousPackages.map((pkg) =>
                 pkg.id === selectedPackageId
                   ? {
-                      ...pkg,
-                      status: "READY_FOR_AGENT",
-                      supersessionNote: "Compiled successfully. Fully validated against EUDR requirements.",
-                    }
+                    ...pkg,
+                    status: "READY_FOR_AGENT",
+                    supersessionNote: "Compiled successfully. Fully validated against EUDR requirements.",
+                  }
                   : pkg,
               ),
             );
@@ -148,11 +148,6 @@ export default function OutputsPage() {
       <SectionHeader
         title="Output Dossiers"
         description="Compile provenance, deforestation, and supplier evidence into shipment dossiers."
-        actions={
-          <Tag tone="brand">
-            Scenario: <span className="ml-1 font-semibold">{formatLabel(scenarioId)}</span>
-          </Tag>
-        }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
